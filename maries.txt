@@ -1,0 +1,37 @@
+# Supabase (required)
+NEXT_PUBLIC_SUPABASE_URL=httpsejrnaowydwklwtfvwisq.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVqcm5hb3d5ZHdrbHd0ZnZ3aXNxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIwNjkyMjIsImV4cCI6MjA4NzY0NTIyMn0.0N5h5agJ4pbZw_K28TtByhcHTzIHqRVtxKSippjX_dw
+SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVqcm5hb3d5ZHdrbHd0ZnZ3aXNxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MjA2OTIyMiwiZXhwIjoyMDg3NjQ1MjIyfQ.2dijXmB2rbxC0jBq-E0KDCkyGMdjqpUAm9ccg6ygunw
+SUPABASE_DB_PASSWORD=Ecormmerce@b1
+# App URL (optional - defaults to localhost in dev)
+# NEXT_PUBLIC_APP_URL=httplocalhost3003
+
+# Payments - Moolre (optional)
+ MOOLRE_API_USER=doctorbarns
+ MOOLRE_API_PUBKEY=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VyaWQiOjEwNjU5NSwiZXhwIjoxOTU2NTQ1OTk5fQ.1rofnBMwTu7zk6HNYdhRl6Fo9wSlZjM6QngC7ADozTA
+ MOOLRE_ACCOUNT_NUMBER=10659506065024
+# MOOLRE_MERCHANT_EMAIL=
+ MOOLRE_CALLBACK_SECRET=ad850890-3365-4c4f-b342-9a1f9e3bbbc6
+
+# SMS - Moolre (required for SMS notifications)
+# Get your VAS key from Moolre dashboard
+MOOLRE_SMS_API_KEY=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ2YXNpZCI6MzE0NCwiZXhwIjoxOTU2NTI3OTk5fQ.6zJLyFCtWPv7Y8hGsQT3AA4jnTKLIWDhFvwy0yg2ydA
+MOOLRE_SMS_SENDER_ID=MariesHair
+
+# Payments - Paystack (Card payments - optional)
+# Get keys from httpsdashboard.paystack.com#settingsdevelopers
+PAYSTACK_SECRET_KEY=sk_live_44f056bbd4cddb3f214668a129a62f14193b38d4
+NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY=pk_live_9908ea0023b6c89d66fb8d753ecdd92d2b2a1fbd
+# For testing use sk_test_xxxx and pk_test_xxxx
+
+# reCAPTCHA (optional)
+# NEXT_PUBLIC_RECAPTCHA_SITE_KEY=x
+# RECAPTCHA_SECRET_KEY=
+
+# Email - Resend (optional)
+# RESEND_API_KEY=
+# ADMIN_EMAIL=
+# EMAIL_FROM=
+
+# Cron jobs (optional)
+# CRON_SECRET=
