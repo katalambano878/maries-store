@@ -11,6 +11,7 @@ function OrderTrackingContent() {
   
   const [orderNumber, setOrderNumber] = useState(urlOrderNumber);
   const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
   const [isTracking, setIsTracking] = useState(false);
   const [order, setOrder] = useState<any>(null);
   const [loading, setLoading] = useState(false);
@@ -18,13 +19,17 @@ function OrderTrackingContent() {
 
   // Auto-track if order number AND email are in the URL
   const urlEmail = searchParams.get('email') || '';
+  const urlPhone = searchParams.get('phone') || '';
 
-  const fetchOrder = useCallback(async (orderNum: string, verifyEmail?: string) => {
-    const emailToVerify = verifyEmail || email;
-    
-    // SECURITY: Email is required for order tracking to prevent unauthorized access
-    if (!emailToVerify) {
-      setError('Please enter your email address to verify your identity.');
+  const normalizePhone = (raw: string) => raw.replace(/\D/g, '').replace(/^233/, '').replace(/^0/, '');
+
+  const fetchOrder = useCallback(async (orderNum: string, verifyEmail?: string, verifyPhone?: string) => {
+    const emailToVerify = (verifyEmail || email).trim();
+    const phoneToVerify = (verifyPhone || phone).trim();
+
+    // SECURITY: require order number + email OR phone to prevent open lookup
+    if (!emailToVerify && !phoneToVerify) {
+      setError('Please enter the email or phone number you used when placing the order.');
       return;
     }
 
@@ -66,9 +71,18 @@ function OrderTrackingContent() {
         return;
       }
 
-      // SECURITY: Always verify email matches — this is mandatory
-      if (data.email?.toLowerCase() !== emailToVerify.toLowerCase()) {
-        setError('The email address does not match this order. Please use the email you placed the order with.');
+      const emailOk =
+        !!emailToVerify &&
+        data.email?.toLowerCase() === emailToVerify.toLowerCase();
+      const phoneOk =
+        !!phoneToVerify &&
+        normalizePhone(data.phone || data.shipping_address?.phone || '') ===
+          normalizePhone(phoneToVerify);
+
+      if (!emailOk && !phoneOk) {
+        setError(
+          'The email or phone number does not match this order. Please use the details you entered at checkout.'
+        );
         setIsTracking(false);
         return;
       }
@@ -81,14 +95,15 @@ function OrderTrackingContent() {
     } finally {
       setLoading(false);
     }
-  }, [email]);
+  }, [email, phone]);
 
   useEffect(() => {
-    if (urlOrderNumber && urlEmail) {
-      setEmail(urlEmail);
-      fetchOrder(urlOrderNumber, urlEmail);
+    if (urlOrderNumber && (urlEmail || urlPhone)) {
+      if (urlEmail) setEmail(urlEmail);
+      if (urlPhone) setPhone(urlPhone);
+      fetchOrder(urlOrderNumber, urlEmail, urlPhone);
     }
-  }, [urlOrderNumber, urlEmail, fetchOrder]);
+  }, [urlOrderNumber, urlEmail, urlPhone, fetchOrder]);
 
   const handleTrack = (e: React.FormEvent) => {
     e.preventDefault();
@@ -99,12 +114,12 @@ function OrderTrackingContent() {
       return;
     }
 
-    if (!email) {
-      setError('Please enter your email address for verification');
+    if (!email && !phone) {
+      setError('Please enter your email or phone number for verification');
       return;
     }
 
-    fetchOrder(orderNumber, email);
+    fetchOrder(orderNumber, email, phone);
   };
 
   // Build tracking timeline from real order data
@@ -208,7 +223,7 @@ function OrderTrackingContent() {
 
               <div>
                 <label className="block text-sm font-semibold text-gray-900 mb-2">
-                  Email Address <span className="text-red-500 font-normal">*</span>
+                  Email Address
                 </label>
                 <input
                   type="email"
@@ -217,6 +232,20 @@ function OrderTrackingContent() {
                   className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-stone-500 focus:border-stone-500"
                   placeholder="you@example.com"
                 />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-900 mb-2">
+                  Phone Number
+                </label>
+                <input
+                  type="tel"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-stone-500 focus:border-stone-500"
+                  placeholder="0551234567"
+                />
+                <p className="text-xs text-gray-500 mt-1">Enter email or phone — whichever you used at checkout.</p>
               </div>
 
               {error && (
@@ -276,7 +305,7 @@ function OrderTrackingContent() {
       <div className="max-w-4xl mx-auto">
         <div className="mb-8">
           <button 
-            onClick={() => { setIsTracking(false); setOrder(null); setOrderNumber(''); setEmail(''); }}
+            onClick={() => { setIsTracking(false); setOrder(null); setOrderNumber(''); setEmail(''); setPhone(''); }}
             className="text-gray-600 hover:text-gray-900 font-medium inline-flex items-center whitespace-nowrap cursor-pointer"
           >
             <i className="ri-arrow-left-line mr-2"></i>
