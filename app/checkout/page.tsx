@@ -59,7 +59,6 @@ export default function CheckoutPage() {
   ];
 
   const [deliveryMethod, setDeliveryMethod] = useState('pickup');
-  const [paymentMethod, setPaymentMethod] = useState<'hubtel' | 'momo'>('hubtel');
   const [errors, setErrors] = useState<any>({});
 
 
@@ -302,7 +301,7 @@ export default function CheckoutPage() {
             discount_total: 0,
             total: checkoutTotal,
             shipping_method: deliveryMethod,
-            payment_method: paymentMethod,
+            payment_method: 'hubtel',
             shipping_address: shippingData,
             billing_address: shippingData,
             metadata: {
@@ -310,8 +309,8 @@ export default function CheckoutPage() {
               first_name: shippingData.firstName,
               last_name: shippingData.lastName,
               tracking_number: trackingNumber,
-              payment_method: paymentMethod,
-              payment_gateway: paymentMethod === 'momo' ? 'moolre' : 'hubtel',
+              payment_method: 'hubtel',
+              payment_gateway: 'hubtel',
             },
           },
         ])
@@ -354,97 +353,46 @@ export default function CheckoutPage() {
         p_address: shippingData
       });
 
-      // 4. Handle Payment Redirects or Completion
-      if (paymentMethod === 'hubtel') {
-        try {
-          const paymentRes = await fetch('/api/payment/hubtel', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              orderId: orderNumber,
-              customerEmail,
-            }),
-          });
+      // 4. Hubtel payment (MoMo & Card)
+      try {
+        const paymentRes = await fetch('/api/payment/hubtel', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            orderId: orderNumber,
+            customerEmail,
+          }),
+        });
 
-          const paymentResult = await paymentRes.json();
+        const paymentResult = await paymentRes.json();
 
-          if (!paymentResult.success) {
-            if (paymentResult.all_out_of_stock) {
-              throw new Error('All items in your order are out of stock. Please update your cart and try again.');
-            }
-            throw new Error(paymentResult.message || 'Payment initialization failed');
+        if (!paymentResult.success) {
+          if (paymentResult.all_out_of_stock) {
+            throw new Error('All items in your order are out of stock. Please update your cart and try again.');
           }
-
-          if (paymentResult.removedItems?.length > 0) {
-            const names = paymentResult.removedItems
-              .map((r: { product_name?: string }) => r.product_name)
-              .filter(Boolean)
-              .join(', ');
-            alert(
-              `Some items were removed because they are no longer available: ${names}. Your updated total is GH₵ ${Number(paymentResult.amount).toFixed(2)}.`
-            );
-          }
-
-          clearCart();
-          window.location.href = paymentResult.url;
-          return;
-        } catch (paymentErr: unknown) {
-          const msg = paymentErr instanceof Error ? paymentErr.message : 'Payment failed';
-          console.error('Hubtel Error:', paymentErr);
-          alert('Failed to initialize payment: ' + msg);
-          setIsLoading(false);
-          return;
+          throw new Error(paymentResult.message || 'Payment initialization failed');
         }
-      }
 
-      if (paymentMethod === 'momo') {
-        try {
-          // Payment link reminder will be sent automatically after 15 mins if unpaid (via cron)
-
-          const paymentRes = await fetch('/api/payment/moolre', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              orderId: orderNumber,
-              amount: checkoutTotal,
-              customerEmail
-            })
-          });
-
-          const paymentResult = await paymentRes.json();
-
-          if (!paymentResult.success) {
-            throw new Error(paymentResult.message || 'Payment initialization failed');
-          }
-
-          // Clear cart before redirecting
-          clearCart();
-
-          // Redirect to Moolre
-          window.location.href = paymentResult.url;
-          return;
-
-        } catch (paymentErr: any) {
-          console.error('Payment Error:', paymentErr);
-          alert('Failed to initialize payment: ' + paymentErr.message);
-          setIsLoading(false);
-          return; // Stop execution
+        if (paymentResult.removedItems?.length > 0) {
+          const names = paymentResult.removedItems
+            .map((r: { product_name?: string }) => r.product_name)
+            .filter(Boolean)
+            .join(', ');
+          alert(
+            `Some items were removed because they are no longer available: ${names}. Your updated total is GH₵ ${Number(paymentResult.amount).toFixed(2)}.`
+          );
         }
+
+        clearCart();
+        window.location.href = paymentResult.url;
+        return;
+      } catch (paymentErr: unknown) {
+        const msg = paymentErr instanceof Error ? paymentErr.message : 'Payment failed';
+        console.error('Hubtel Error:', paymentErr);
+        alert('Failed to initialize payment: ' + msg);
+        setIsLoading(false);
+        return;
       }
-
-      // 5. Send Notifications (For COD or others)
-      fetch('/api/notifications', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          type: 'order_created',
-          payload: order
-        })
-      }).catch(err => console.error('Notification trigger error:', err));
-
-      // 6. Clear Cart & Redirect (For COD)
-      clearCart();
-      router.push(`/order-success?order=${orderNumber}`);
 
     } catch (err: any) {
       console.error('Checkout error:', err);
@@ -745,50 +693,15 @@ export default function CheckoutPage() {
                     */}
                   </div>
 
-                  <h3 className="text-lg font-bold text-gray-900 mt-8 mb-4">Payment Method</h3>
-                  <div className="space-y-3">
-                    <label className={`flex items-center justify-between p-4 border-2 rounded-lg cursor-pointer transition-colors ${paymentMethod === 'hubtel' ? 'border-stone-700 bg-stone-50' : 'border-gray-300 hover:border-gray-400'
-                      }`}>
-                      <div className="flex items-center space-x-4">
-                        <input
-                          type="radio"
-                          name="payment"
-                          value="hubtel"
-                          checked={paymentMethod === 'hubtel'}
-                          onChange={() => setPaymentMethod('hubtel')}
-                          className="w-5 h-5 text-stone-700"
-                        />
-                        <div>
-                          <p className="font-semibold text-gray-900 flex items-center gap-2">
-                            Pay Online (Hubtel)
-                            <span className="text-xs font-semibold uppercase tracking-wide bg-stone-700 text-white px-2 py-0.5 rounded-full">
-                              Primary
-                            </span>
-                          </p>
-                          <p className="text-sm text-gray-600">MoMo &amp; Card — recommended secure checkout</p>
-                        </div>
+                  <h3 className="text-lg font-bold text-gray-900 mt-8 mb-4">Payment</h3>
+                  <div className="flex items-center justify-between p-4 border-2 border-stone-700 bg-stone-50 rounded-lg">
+                    <div className="flex items-center space-x-4">
+                      <i className="ri-secure-payment-line text-2xl text-stone-700"></i>
+                      <div>
+                        <p className="font-semibold text-gray-900">Pay Online with Hubtel</p>
+                        <p className="text-sm text-gray-600">Mobile Money &amp; Card — secure checkout</p>
                       </div>
-                      <i className="ri-secure-payment-line text-xl text-stone-700"></i>
-                    </label>
-
-                    <label className={`flex items-center justify-between p-4 border-2 rounded-lg cursor-pointer transition-colors ${paymentMethod === 'momo' ? 'border-stone-700 bg-stone-50' : 'border-gray-300 hover:border-gray-400'
-                      }`}>
-                      <div className="flex items-center space-x-4">
-                        <input
-                          type="radio"
-                          name="payment"
-                          value="momo"
-                          checked={paymentMethod === 'momo'}
-                          onChange={() => setPaymentMethod('momo')}
-                          className="w-5 h-5 text-stone-700"
-                        />
-                        <div>
-                          <p className="font-semibold text-gray-900">MoMo (Moolre)</p>
-                          <p className="text-sm text-gray-600">Alternative Mobile Money option</p>
-                        </div>
-                      </div>
-                      <i className="ri-smartphone-line text-xl text-stone-700"></i>
-                    </label>
+                    </div>
                   </div>
 
                   <div className="flex flex-col-reverse md:flex-row gap-4 mt-6">
@@ -813,7 +726,7 @@ export default function CheckoutPage() {
                           Processing...
                         </>
                       ) : (
-                        paymentMethod === 'momo' ? 'Pay with MoMo (Moolre)' : 'Pay Online (Hubtel)'
+                        'Pay Online'
                       )}
                     </button>
                   </div>

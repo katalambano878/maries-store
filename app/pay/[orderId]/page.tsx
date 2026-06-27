@@ -5,7 +5,6 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import { usePageTitle } from '@/hooks/usePageTitle';
-import { resolveOrderPaymentGateway, isMoolreGateway } from '@/lib/payment-gateway';
 
 export default function PaymentPage() {
   usePageTitle('Complete Payment');
@@ -60,12 +59,8 @@ export default function PaymentPage() {
     setProcessing(true);
     setError(null);
 
-    const gateway = resolveOrderPaymentGateway(order.metadata);
-    const useMoolre = isMoolreGateway(gateway);
-    const endpoint = useMoolre ? '/api/payment/moolre' : '/api/payment/hubtel';
-
     try {
-      const paymentRes = await fetch(endpoint, {
+      const paymentRes = await fetch('/api/payment/hubtel', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -101,10 +96,6 @@ export default function PaymentPage() {
       setProcessing(false);
     }
   };
-
-  const gateway = resolveOrderPaymentGateway(order?.metadata);
-  const useMoolre = isMoolreGateway(gateway);
-  const providerLabel = useMoolre ? 'Moolre' : 'Hubtel';
 
   if (loading) {
     return (
@@ -245,7 +236,7 @@ export default function PaymentPage() {
           ) : (
             <>
               <i className="ri-secure-payment-line mr-2"></i>
-              Pay GH₵ {order?.total?.toFixed(2)} with {providerLabel}
+              Pay GH₵ {order?.total?.toFixed(2)} with Hubtel
             </>
           )}
         </button>
@@ -253,7 +244,7 @@ export default function PaymentPage() {
         <div className="mt-6 text-center">
           <p className="text-xs text-gray-500 flex items-center justify-center">
             <i className="ri-lock-line mr-1"></i>
-            Secure payment powered by {providerLabel}
+            Secure payment powered by Hubtel
           </p>
         </div>
 
