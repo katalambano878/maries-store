@@ -3,7 +3,13 @@
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { Suspense, useState, useEffect, useRef } from 'react';
-import { supabase } from '@/lib/supabase';
+import {
+  isHubtelGateway,
+  isMoolreGateway,
+  isPaystackGateway,
+  PRIMARY_PAYMENT_GATEWAY,
+  resolveOrderPaymentGateway,
+} from '@/lib/payment-gateway';
 
 function OrderSuccessContent() {
   const searchParams = useSearchParams();
@@ -39,20 +45,18 @@ function OrderSuccessContent() {
         setOrder(orderData);
 
         const meta = orderData?.metadata || {};
-        const isPaystackOrder =
-          meta.payment_gateway === 'paystack' ||
-          meta.payment_method === 'card';
-        const isMoolreOrder =
-          meta.payment_gateway === 'moolre' ||
-          meta.payment_method === 'momo' ||
-          meta.payment_method === 'moolre';
+        const gateway = resolveOrderPaymentGateway(meta, paymentGateway);
+        const isHubtelOrder = isHubtelGateway(gateway);
+        const isPaystackOrder = isPaystackGateway(gateway);
+        const isMoolreOrder = isMoolreGateway(gateway);
 
         const shouldVerify =
           orderData &&
           orderData.payment_status !== 'paid' &&
-          (isMoolreOrder ||
+          (isHubtelOrder ||
+            isMoolreOrder ||
             (isPaystackOrder && (paymentSuccess === 'true' || !!paystackReference)) ||
-            (paymentSuccess === 'true' && !isMoolreOrder && !isPaystackOrder));
+            paymentSuccess === 'true');
 
         if (shouldVerify && !verifyRunRef.current) {
           verifyRunRef.current = true;
@@ -71,9 +75,13 @@ function OrderSuccessContent() {
     setVerifying(true);
     setVerifyError(null);
 
-    const normalizedGateway =
-      gatewayParam || initialOrder?.metadata?.payment_gateway || initialOrder?.metadata?.payment_method;
-    const isPaystack = normalizedGateway === 'paystack' || normalizedGateway === 'card';
+    const gateway = resolveOrderPaymentGateway(
+      initialOrder?.metadata,
+      gatewayParam || (paymentSuccess === 'true' ? PRIMARY_PAYMENT_GATEWAY : null)
+    );
+    const isHubtel = isHubtelGateway(gateway);
+    const isPaystack = isPaystackGateway(gateway);
+    const isMoolre = isMoolreGateway(gateway);
 
     await new Promise((resolve) => setTimeout(resolve, 2000));
 
@@ -95,12 +103,17 @@ function OrderSuccessContent() {
       }
 
       try {
-        const endpoint = isPaystack ? '/api/payment/paystack/verify' : '/api/payment/moolre/verify';
-        const payload: Record<string, any> = { orderNumber: orderNum };
-        if (isPaystack && reference) {
-          payload.reference = reference;
-        } else if (!isPaystack && reference) {
-          payload.moolreGatewayReference = reference;
+        let endpoint = '/api/payment/hubtel/verify';
+        const payload: Record<string, unknown> = { orderNumber: orderNum };
+
+        if (isMoolre) {
+          endpoint = '/api/payment/moolre/verify';
+          if (reference) payload.moolreGatewayReference = reference;
+        } else if (isPaystack) {
+          endpoint = '/api/payment/paystack/verify';
+          if (reference) payload.reference = reference;
+        } else {
+          payload.email = (refreshed?.email || initialOrder?.email || '').trim().toLowerCase();
         }
 
         const res = await fetch(`${typeof window !== 'undefined' ? window.location.origin : ''}${endpoint}`, {

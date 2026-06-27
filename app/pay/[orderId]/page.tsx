@@ -1,16 +1,18 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
-import { usePageTitle } from '@/hooks/usePageTitle';
+import { resolveOrderPaymentGateway, isMoolreGateway } from '@/lib/payment-gateway';
 
 export default function PaymentPage() {
   usePageTitle('Complete Payment');
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const orderId = params.orderId as string;
+  const wasCancelled = searchParams.get('cancelled') === 'true';
 
   const [order, setOrder] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -20,14 +22,11 @@ export default function PaymentPage() {
   useEffect(() => {
     async function fetchOrder() {
       try {
-        // Fetch order by ID (UUID) or order_number
-        let query = supabase
+        const { data, error: fetchError } = await supabase
           .from('orders')
           .select('*')
           .or(`id.eq.${orderId},order_number.eq.${orderId}`)
           .single();
-
-        const { data, error: fetchError } = await query;
 
         if (fetchError || !data) {
           setError('Order not found. Please check your link and try again.');
@@ -37,12 +36,10 @@ export default function PaymentPage() {
 
         setOrder(data);
 
-        // If already paid, redirect to success page
         if (data.payment_status === 'paid') {
           router.push(`/order-success?order=${data.order_number}`);
           return;
         }
-
       } catch (err) {
         console.error('Error fetching order:', err);
         setError('Failed to load order details.');
@@ -62,38 +59,57 @@ export default function PaymentPage() {
     setProcessing(true);
     setError(null);
 
+    const gateway = resolveOrderPaymentGateway(order.metadata);
+    const useMoolre = isMoolreGateway(gateway);
+    const endpoint = useMoolre ? '/api/payment/moolre' : '/api/payment/hubtel';
+
     try {
-      const paymentRes = await fetch('/api/payment/moolre', {
+      const paymentRes = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           orderId: order.order_number,
-          amount: order.total,
-          customerEmail: order.email
-        })
+          customerEmail: order.email,
+        }),
       });
 
       const paymentResult = await paymentRes.json();
 
       if (!paymentResult.success) {
+        if (paymentResult.all_out_of_stock) {
+          throw new Error('All items in this order are out of stock. Please contact support.');
+        }
         throw new Error(paymentResult.message || 'Payment initialization failed');
       }
 
-      // Redirect to Moolre payment page
-      window.location.href = paymentResult.url;
+      if (paymentResult.removedItems?.length > 0) {
+        const names = paymentResult.removedItems
+          .map((r: { product_name?: string }) => r.product_name)
+          .filter(Boolean)
+          .join(', ');
+        alert(
+          `Some items were removed because they are no longer available: ${names}. Your updated total is GH₵ ${Number(paymentResult.amount).toFixed(2)}.`
+        );
+      }
 
-    } catch (err: any) {
+      window.location.href = paymentResult.url;
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to initialize payment. Please try again.';
       console.error('Payment error:', err);
-      setError(err.message || 'Failed to initialize payment. Please try again.');
+      setError(msg);
       setProcessing(false);
     }
   };
+
+  const gateway = resolveOrderPaymentGateway(order?.metadata);
+  const useMoolre = isMoolreGateway(gateway);
+  const providerLabel = useMoolre ? 'Moolre' : 'Hubtel';
 
   if (loading) {
     return (
       <main className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="w-16 h-16 border-4 border-blue-200 border-t-blue-700 rounded-full animate-spin mx-auto mb-4"></div>
+          <div className="w-16 h-16 border-4 border-stone-200 border-t-stone-700 rounded-full animate-spin mx-auto mb-4"></div>
           <p className="text-gray-600">Loading order details...</p>
         </div>
       </main>
@@ -111,7 +127,7 @@ export default function PaymentPage() {
           <p className="text-gray-600 mb-6">{error}</p>
           <Link
             href="/"
-            className="inline-flex items-center px-6 py-3 bg-blue-700 hover:bg-blue-800 text-white rounded-lg font-semibold transition-colors"
+            className="inline-flex items-center px-6 py-3 bg-stone-700 hover:bg-stone-800 text-white rounded-lg font-semibold transition-colors"
           >
             <i className="ri-home-line mr-2"></i>
             Go to Homepage
@@ -127,16 +143,28 @@ export default function PaymentPage() {
   return (
     <main className="min-h-screen bg-gray-50 py-12 px-4">
       <div className="max-w-lg mx-auto">
-        {/* Header */}
         <div className="text-center mb-8">
           <Link href="/" className="inline-block mb-6">
-            <span className="text-2xl font-['Pacifico'] text-blue-700">MultiMey</span>
+            <span className="text-2xl font-['Pacifico'] text-stone-800">Maries Hair</span>
           </Link>
           <h1 className="text-2xl font-bold text-gray-900">Complete Your Payment</h1>
           <p className="text-gray-600 mt-2">Hi {customerName}, your order is waiting for payment.</p>
         </div>
 
-        {/* Order Summary Card */}
+        {wasCancelled && (
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6">
+            <div className="flex items-start space-x-3">
+              <i className="ri-information-line text-xl text-amber-600 mt-0.5"></i>
+              <div>
+                <p className="text-sm font-semibold text-amber-800">Payment cancelled</p>
+                <p className="text-sm text-amber-700 mt-1">
+                  You cancelled the payment on Hubtel. You can try again below.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="bg-white rounded-xl shadow-sm p-6 mb-6">
           <div className="flex items-center justify-between mb-4 pb-4 border-b border-gray-100">
             <span className="text-sm text-gray-500">Order Number</span>
@@ -162,11 +190,10 @@ export default function PaymentPage() {
 
           <div className="flex justify-between items-center pt-4 border-t border-gray-200">
             <span className="text-lg font-semibold text-gray-900">Total</span>
-            <span className="text-2xl font-bold text-blue-700">GH₵ {order?.total?.toFixed(2)}</span>
+            <span className="text-2xl font-bold text-stone-700">GH₵ {order?.total?.toFixed(2)}</span>
           </div>
         </div>
 
-        {/* Payment Status */}
         {order?.payment_status === 'pending' && (
           <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
             <div className="flex items-start space-x-3">
@@ -201,11 +228,10 @@ export default function PaymentPage() {
           </div>
         )}
 
-        {/* Pay Button */}
         <button
           onClick={handlePayNow}
           disabled={processing}
-          className="w-full bg-blue-700 hover:bg-blue-800 text-white py-4 rounded-xl font-semibold text-lg transition-colors disabled:opacity-70 flex items-center justify-center cursor-pointer"
+          className="w-full bg-stone-700 hover:bg-stone-800 text-white py-4 rounded-xl font-semibold text-lg transition-colors disabled:opacity-70 flex items-center justify-center cursor-pointer"
         >
           {processing ? (
             <>
@@ -218,23 +244,21 @@ export default function PaymentPage() {
           ) : (
             <>
               <i className="ri-secure-payment-line mr-2"></i>
-              Pay GH₵ {order?.total?.toFixed(2)} with Mobile Money
+              Pay GH₵ {order?.total?.toFixed(2)} with {providerLabel}
             </>
           )}
         </button>
 
-        {/* Security Note */}
         <div className="mt-6 text-center">
           <p className="text-xs text-gray-500 flex items-center justify-center">
             <i className="ri-lock-line mr-1"></i>
-            Secure payment powered by Moolre
+            Secure payment powered by {providerLabel}
           </p>
         </div>
 
-        {/* Help Link */}
         <div className="mt-8 text-center">
           <p className="text-sm text-gray-600">
-            Having issues? <Link href="/contact" className="text-blue-700 hover:underline">Contact Support</Link>
+            Having issues? <Link href="/contact" className="text-stone-700 hover:underline">Contact Support</Link>
           </p>
         </div>
       </div>
