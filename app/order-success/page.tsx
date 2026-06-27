@@ -10,6 +10,7 @@ import {
   PRIMARY_PAYMENT_GATEWAY,
   resolveOrderPaymentGateway,
 } from '@/lib/payment-gateway';
+import { supabase } from '@/lib/supabase';
 
 function OrderSuccessContent() {
   const searchParams = useSearchParams();

@@ -47,6 +47,7 @@ function OrderTrackingContent() {
           payment_status,
           total,
           email,
+          phone,
           created_at,
           shipping_address,
           metadata,

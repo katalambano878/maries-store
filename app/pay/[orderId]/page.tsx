@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
+import { usePageTitle } from '@/hooks/usePageTitle';
 import { resolveOrderPaymentGateway, isMoolreGateway } from '@/lib/payment-gateway';
 
 export default function PaymentPage() {
