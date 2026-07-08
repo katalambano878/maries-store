@@ -8,6 +8,11 @@ import {
     resolveProductPrice,
     resolveVariantPrice,
 } from '@/lib/pricing';
+import {
+    formatReceiptDate,
+    formatReceiptTime,
+    parsePosOrderTimestamp,
+} from '@/lib/receipt-datetime';
 
 interface PosVariant {
     id: string;
@@ -168,13 +173,13 @@ export default function POSPage() {
     });
     const [savingCustomer, setSavingCustomer] = useState(false);
     const [customerSaved, setCustomerSaved] = useState(false);
-    // Thermal paper width — 58mm (most common) or 80mm. Persisted to localStorage.
-    const [paperWidth, setPaperWidth] = useState<'58' | '80'>('58');
+    // Thermal paper width — 57mm (this store's rolls), 58mm, or 80mm.
+    const [paperWidth, setPaperWidth] = useState<'57' | '58' | '80'>('57');
 
     useEffect(() => {
         if (typeof window === 'undefined') return;
         const saved = window.localStorage.getItem('pos.paperWidth');
-        if (saved === '58' || saved === '80') setPaperWidth(saved);
+        if (saved === '57' || saved === '58' || saved === '80') setPaperWidth(saved);
     }, []);
 
     useEffect(() => {
@@ -658,8 +663,20 @@ export default function POSPage() {
                     console.error('Stock reduction error (non-fatal):', stockErr);
                 }
 
-                // Success — show completed
-                setCompletedOrder({ id: order.id, orderNumber, total: posGrand, items: cart });
+                const tendered = paymentMethod === 'cash' ? parseFloat(amountTendered || '0') : null;
+                const change = tendered != null ? Math.max(0, tendered - posGrand) : 0;
+
+                // Success — show completed (snapshot payment fields before cart clears)
+                setCompletedOrder({
+                    id: order.id,
+                    orderNumber,
+                    total: posGrand,
+                    items: cart,
+                    paymentMethod,
+                    amountTendered: tendered,
+                    changeDue: change,
+                    createdAt: order.created_at,
+                });
                 setCart([]);
 
                 // Confirmations (email + SMS): notify when we have a real phone or a non–walk-in email.
@@ -714,8 +731,10 @@ export default function POSPage() {
                     orderNumber,
                     total: posGrand,
                     items: cart,
+                    paymentMethod,
                     paymentUrl: paymentResult.url,
-                    paymentPending: true
+                    paymentPending: true,
+                    createdAt: order.created_at,
                 });
                 setCart([]);
             }
@@ -732,29 +751,32 @@ export default function POSPage() {
         if (!completedOrder) return;
         const items = completedOrder.items || [];
 
+        const receiptPaymentMethod = completedOrder.paymentMethod || paymentMethod;
+        const receiptTendered =
+            typeof completedOrder.amountTendered === 'number'
+                ? completedOrder.amountTendered
+                : paymentMethod === 'cash'
+                    ? parseFloat(amountTendered || '0')
+                    : null;
+        const receiptChange =
+            typeof completedOrder.changeDue === 'number'
+                ? completedOrder.changeDue
+                : receiptTendered != null
+                    ? Math.max(0, receiptTendered - completedOrder.total)
+                    : 0;
+
         // ---------------------------------------------------------------
-        // Thermal printer geometry
-        // ---------------------------------------------------------------
-        // 58mm paper roll → ~48mm printable area (≈384 dots @ 203 DPI)
-        // 80mm paper roll → ~72mm printable area (≈576 dots @ 203 DPI)
-        // We keep 5mm margin on each side of 58mm and 4mm on 80mm to allow
-        // for paper-feed drift and the head's non-printable strip. The
-        // content body width is intentionally smaller than the paper width
-        // so right-aligned values (TOTAL, prices) cannot be clipped.
+        // Thermal printer geometry (57mm rolls — ~48mm printable @ 203 DPI)
+        // Use fixed character columns; browsers handle mm CSS inconsistently.
         // ---------------------------------------------------------------
         const is80 = paperWidth === '80';
-        const pageSize = is80 ? '80mm auto' : '58mm auto';
-        const sideMargin = is80 ? '4mm' : '5mm';
-        // Keep the content body NARROWER than the printable area so the
-        // right-aligned price/TOTAL column can never be clipped by paper-feed
-        // drift or the print head's non-printable right strip. We reserve a
-        // ~3mm safety gap on the right in addition to the @page side margin.
-        const bodyWidth = is80 ? '68mm' : '45mm';
-        // Column widths for the items table. Intentionally sum to LESS than
-        // bodyWidth (leaving slack) so the Amt column keeps breathing room.
-        const nameColW = is80 ? '38mm' : '23mm';
-        const qtyColW = is80 ? '7mm' : '5mm';
-        const priceColW = is80 ? '23mm' : '17mm';
+        const pageSize = is80 ? '80mm auto' : paperWidth === '57' ? '57mm auto' : '58mm auto';
+        const sideMargin = is80 ? '3mm' : '2mm';
+        const bodyWidth = is80 ? '68mm' : '42mm';
+        const charWidth = is80 ? 48 : 32;
+        const fontSize = is80 ? '10pt' : '8pt';
+        const headerSize = is80 ? '12pt' : '10pt';
+        const totalSize = is80 ? '11pt' : '9pt';
 
         const escapeHtml = (s: string) =>
             String(s ?? '')
@@ -764,39 +786,111 @@ export default function POSPage() {
                 .replace(/"/g, '&quot;')
                 .replace(/'/g, '&#39;');
 
-        const itemRows = items.map((i: any) => {
-            const variantBit = i.variantDisplay ? ` ${i.variantDisplay}` : '';
-            const name = escapeHtml(`${i.name}${variantBit}`);
-            const qty = i.cartQuantity;
-            const amt = (i.price * i.cartQuantity).toFixed(2);
-            return `<tr>
-                <td class="name">${name}</td>
-                <td class="qty">${qty}</td>
-                <td class="amt">${amt}</td>
-            </tr>`;
-        }).join('');
+        const cedi = `GH${'\u20B5'}`;
 
-        const cashRows = (paymentMethod === 'cash' && changeDue > 0) ? `
-            <tr><td class="lbl">Tendered</td><td class="val">GH${'\u20B5'}${parseFloat(amountTendered).toFixed(2)}</td></tr>
-            <tr class="bold"><td class="lbl">Change</td><td class="val">GH${'\u20B5'}${changeDue.toFixed(2)}</td></tr>
-        ` : '';
+        const padRight = (text: string, width: number) => {
+            const t = text.slice(0, width);
+            return t + ' '.repeat(Math.max(0, width - t.length));
+        };
+
+        const twoCol = (left: string, right: string) => {
+            const r = right.slice(0, Math.min(right.length, charWidth - 1));
+            const leftMax = Math.max(1, charWidth - r.length);
+            return padRight(left, leftMax) + r;
+        };
+
+        const center = (text: string) => {
+            const t = text.slice(0, charWidth);
+            const pad = Math.max(0, Math.floor((charWidth - t.length) / 2));
+            return ' '.repeat(pad) + t;
+        };
+
+        const rule = () => '-'.repeat(charWidth);
+
+        const formatMoney = (n: number) => `${cedi}${n.toFixed(2)}`;
+
+        const saleAt = parsePosOrderTimestamp({
+            createdAt: completedOrder.createdAt,
+            orderNumber: completedOrder.orderNumber,
+        });
+        const dateStr = formatReceiptDate(saleAt);
+        const timeStr = formatReceiptTime(saleAt);
+
+        const orderLabel = completedOrder.orderNumber.length > charWidth - 1
+            ? `#${completedOrder.orderNumber.slice(-(charWidth - 2))}`
+            : `#${completedOrder.orderNumber}`;
+
+        const payLabel =
+            receiptPaymentMethod === 'cash'
+                ? 'CASH'
+                : receiptPaymentMethod === 'card'
+                    ? 'CARD'
+                    : receiptPaymentMethod === 'momo'
+                        ? 'MOMO'
+                        : String(receiptPaymentMethod || '').toUpperCase();
+
+        const lines: string[] = [
+            center('Maries Hair'),
+            center('Kpakpo mankralo road 55'),
+            center('Mataheko'),
+            center('0547742920'),
+            rule(),
+            twoCol('Order', orderLabel),
+            twoCol('Date', dateStr),
+            twoCol('Time', timeStr),
+            twoCol('Pay', payLabel),
+            rule(),
+            twoCol('Item', 'Amt'),
+        ];
+
+        for (const i of items) {
+            const variantBit = i.variantDisplay ? ` ${i.variantDisplay}` : '';
+            const name = `${i.name}${variantBit}`.trim();
+            const qty = i.cartQuantity;
+            const amt = (i.price * qty).toFixed(2);
+            const qtyPrefix = qty > 1 ? `${qty}x ` : '';
+            const itemLine = `${qtyPrefix}${name}`;
+            lines.push(twoCol(itemLine, amt));
+        }
+
+        lines.push(rule());
+        lines.push(twoCol('TOTAL', formatMoney(completedOrder.total)));
+
+        if (receiptPaymentMethod === 'cash' && receiptTendered != null) {
+            lines.push(twoCol('Tendered', formatMoney(receiptTendered)));
+            if (receiptChange > 0) {
+                lines.push(twoCol('Change', formatMoney(receiptChange)));
+            }
+        }
+
+        lines.push(rule());
+        lines.push(center('Thank you for shopping!'));
+        lines.push(center('shopmarieshair.com'));
+
+        const totalLine = twoCol('TOTAL', formatMoney(completedOrder.total));
+
+        const receiptBody = lines
+            .map((line) => {
+                const escaped = escapeHtml(line);
+                if (line === center('Maries Hair')) {
+                    return `<span class="store-name">${escapeHtml(line.trim())}</span>`;
+                }
+                if (line === totalLine) {
+                    return `<span class="total-line">${escaped}</span>`;
+                }
+                return escaped;
+            })
+            .join('\n');
 
         const receiptHtml = `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Receipt #${escapeHtml(completedOrder.orderNumber)}</title>
+<title>Receipt ${escapeHtml(completedOrder.orderNumber)}</title>
 <style>
-    /* =====================================================
-       Thermal-printer-safe stylesheet
-       - Pure black/white, no gradients/shadows/transforms
-       - Monospaced font (consistent character cells)
-       - Table layout with fixed mm column widths
-       - All sizing in mm/pt (NOT px) for accurate paper fit
-       ===================================================== */
     @page {
         size: ${pageSize};
-        margin: 3mm ${sideMargin};
+        margin: 2mm ${sideMargin};
     }
 
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -808,154 +902,43 @@ export default function POSPage() {
 
     body {
         font-family: 'Courier New', Courier, 'Liberation Mono', monospace;
-        font-size: 10pt;
-        line-height: 1.25;
+        font-size: ${fontSize};
+        line-height: 1.2;
         width: ${bodyWidth};
         max-width: ${bodyWidth};
+        margin: 0 auto;
         -webkit-print-color-adjust: exact;
         print-color-adjust: exact;
     }
 
-    .center { text-align: center; }
-    .bold   { font-weight: 700; }
-    .small  { font-size: 8pt; }
-
-    /* Dashed rule. Use solid 1px black for printers that drop dashed
-       patterns at low DPI. */
-    hr.sep {
-        border: 0;
-        border-top: 1px dashed #000;
-        margin: 1.5mm 0;
-    }
-
-    /* Store header */
-    .store-name {
-        font-size: 13pt;
-        font-weight: 700;
-        letter-spacing: 0.3pt;
-    }
-    .store-meta { font-size: 8pt; }
-
-    /* All rows use table layout — flex is unreliable on thermal drivers */
-    table {
+    pre.receipt {
+        font-family: inherit;
+        font-size: inherit;
+        line-height: inherit;
+        white-space: pre;
+        overflow: hidden;
         width: 100%;
-        border-collapse: collapse;
-        table-layout: fixed;
+        margin: 0;
+        padding: 0;
     }
-    table.meta td { padding: 0.3mm 0; vertical-align: top; }
-    table.meta td.k { width: ${is80 ? '20mm' : '14mm'}; font-weight: 700; }
-    table.meta td.v { text-align: right; overflow-wrap: break-word; word-break: break-word; }
 
-    table.items {
-        margin-top: 0.5mm;
-    }
-    table.items th,
-    table.items td {
-        padding: 0.4mm 0;
-        vertical-align: top;
-        font-size: 9pt;
-    }
-    table.items th {
+    pre.receipt .store-name {
+        display: block;
+        font-size: ${headerSize};
         font-weight: 700;
-        text-align: left;
-        border-bottom: 1px solid #000;
-    }
-    table.items td.name {
-        width: ${nameColW};
-        overflow-wrap: break-word;
-        word-break: break-word;
-    }
-    table.items td.qty,
-    table.items th.qty {
-        width: ${qtyColW};
         text-align: center;
-    }
-    table.items td.amt,
-    table.items th.amt {
-        width: ${priceColW};
-        text-align: right;
-        font-variant-numeric: tabular-nums;
+        margin-bottom: 1mm;
     }
 
-    /* Totals table — gives the price column a dedicated, generous
-       fixed width so the TOTAL value can never be clipped. */
-    table.totals {
-        margin-top: 0.5mm;
-    }
-    table.totals td.lbl {
-        width: ${is80 ? '36mm' : '18mm'};
+    pre.receipt .total-line {
+        display: block;
+        font-size: ${totalSize};
         font-weight: 700;
-        padding: 0.6mm 0;
     }
-    table.totals td.val {
-        text-align: right;
-        font-variant-numeric: tabular-nums;
-        padding: 0.6mm 0;
-    }
-    table.totals tr.grand td {
-        font-size: 13pt;
-        font-weight: 700;
-        padding: 1mm 0;
-        border-top: 1px solid #000;
-        border-bottom: 1px solid #000;
-    }
-
-    .footer {
-        margin-top: 2mm;
-        text-align: center;
-    }
-    .footer p { line-height: 1.3; }
-
-    /* Anything we never want to show in print (just in case) */
-    .no-print { display: none !important; }
 </style>
 </head>
 <body>
-    <div class="center">
-        <p class="store-name">Maries Hair</p>
-        <p class="store-meta">Kpakpo mankralo road 55</p>
-        <p class="store-meta">Mataheko &middot; 0547742920</p>
-    </div>
-
-    <hr class="sep" />
-
-    <table class="meta">
-        <tr><td class="k">Order</td><td class="v">#${escapeHtml(completedOrder.orderNumber)}</td></tr>
-        <tr><td class="k">Date</td><td class="v">${escapeHtml(new Date().toLocaleString())}</td></tr>
-        <tr><td class="k">Pay</td><td class="v">${escapeHtml(paymentMethod.toUpperCase())}</td></tr>
-    </table>
-
-    <hr class="sep" />
-
-    <table class="items">
-        <thead>
-            <tr>
-                <th class="name">Item</th>
-                <th class="qty">Qty</th>
-                <th class="amt">Amt</th>
-            </tr>
-        </thead>
-        <tbody>
-            ${itemRows}
-        </tbody>
-    </table>
-
-    <hr class="sep" />
-
-    <table class="totals">
-        <tr class="grand">
-            <td class="lbl">TOTAL</td>
-            <td class="val">GH${'\u20B5'}${completedOrder.total.toFixed(2)}</td>
-        </tr>
-        ${cashRows}
-    </table>
-
-    <hr class="sep" />
-
-    <div class="footer">
-        <p>Thank you for shopping!</p>
-        <p class="small">www.shopmarieshair.com</p>
-    </div>
+<pre class="receipt">${receiptBody}</pre>
 </body>
 </html>`;
 
@@ -1285,10 +1268,10 @@ export default function POSPage() {
                                     </h2>
                                     <p className="text-gray-500 mt-1">Order #{completedOrder.orderNumber}</p>
 
-                                    {!completedOrder.paymentPending && paymentMethod === 'cash' && changeDue > 0 && (
+                                    {!completedOrder.paymentPending && completedOrder.paymentMethod === 'cash' && completedOrder.changeDue > 0 && (
                                         <div className="mt-3 bg-stone-50 border border-stone-200 rounded-lg p-3">
                                             <p className="text-sm text-stone-700">Change Due</p>
-                                            <p className="text-2xl font-bold text-stone-800">GH₵{changeDue.toFixed(2)}</p>
+                                            <p className="text-2xl font-bold text-stone-800">GH₵{completedOrder.changeDue.toFixed(2)}</p>
                                         </div>
                                     )}
 
@@ -1323,13 +1306,20 @@ export default function POSPage() {
                                 </div>
 
                                 <div className="w-full mt-4 space-y-3">
-                                    <div className="flex items-center justify-center gap-2 text-sm">
+                                    <div className="flex items-center justify-center gap-2 text-sm flex-wrap">
                                         <span className="text-gray-600">Paper:</span>
                                         <div className="inline-flex rounded-lg border border-gray-300 overflow-hidden">
                                             <button
                                                 type="button"
+                                                onClick={() => setPaperWidth('57')}
+                                                className={`px-3 py-1.5 font-semibold transition-colors ${paperWidth === '57' ? 'bg-stone-700 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}
+                                            >
+                                                57 mm
+                                            </button>
+                                            <button
+                                                type="button"
                                                 onClick={() => setPaperWidth('58')}
-                                                className={`px-3 py-1.5 font-semibold transition-colors ${paperWidth === '58' ? 'bg-stone-700 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}
+                                                className={`px-3 py-1.5 font-semibold transition-colors border-l border-gray-300 ${paperWidth === '58' ? 'bg-stone-700 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}
                                             >
                                                 58 mm
                                             </button>

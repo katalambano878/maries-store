@@ -5,6 +5,11 @@ import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import FraudDetectionAlert from '@/components/FraudDetectionAlert';
+import {
+    formatReceiptDate,
+    formatReceiptTime,
+    parsePosOrderTimestamp,
+} from '@/lib/receipt-datetime';
 
 interface OrderDetailClientProps {
   orderId: string;
@@ -35,6 +40,13 @@ export default function OrderDetailClient({ orderId }: OrderDetailClientProps) {
     const cName = (sa.firstName && sa.lastName)
       ? `${sa.firstName.trim()} ${sa.lastName.trim()}`
       : sa.full_name || sa.firstName || order.email?.split('@')[0] || 'Customer';
+
+    const saleAt = parsePosOrderTimestamp({
+      createdAt: order.created_at,
+      orderNumber: order.order_number,
+    });
+    const receiptDate = formatReceiptDate(saleAt);
+    const receiptTime = formatReceiptTime(saleAt);
 
     const itemsHtml = (order.order_items || []).map((item: any) => `
       <div style="margin-bottom:0.8mm;padding-bottom:0.8mm;border-bottom:1px dotted #555;">
@@ -84,8 +96,8 @@ export default function OrderDetailClient({ orderId }: OrderDetailClientProps) {
 
   <div class="section">
     <div class="row"><span class="bold">Order:</span><span class="bold">${order.order_number}</span></div>
-    <div class="row"><span>Date:</span><span>${new Date(order.created_at).toLocaleDateString('en-GB')}</span></div>
-    <div class="row"><span>Time:</span><span>${new Date(order.created_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</span></div>
+    <div class="row"><span>Date:</span><span>${receiptDate}</span></div>
+    <div class="row"><span>Time:</span><span>${receiptTime}</span></div>
   </div>
 
   <div class="section">
