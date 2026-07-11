@@ -766,17 +766,20 @@ export default function POSPage() {
                     : 0;
 
         // ---------------------------------------------------------------
-        // Thermal printer geometry (57mm rolls — ~48mm printable @ 203 DPI)
-        // Use fixed character columns; browsers handle mm CSS inconsistently.
+        // Thermal printer geometry.
+        // 57/58mm rolls have ~48mm printable width; 80mm rolls ~72mm.
+        // The body is kept several mm NARROWER than the printable area and
+        // every row is a flex row (label left, value right) that wraps
+        // within 100% width — so values can never be pushed off the paper.
+        // Same proven approach as the admin order-detail receipt.
         // ---------------------------------------------------------------
         const is80 = paperWidth === '80';
         const pageSize = is80 ? '80mm auto' : paperWidth === '57' ? '57mm auto' : '58mm auto';
-        const sideMargin = is80 ? '3mm' : '2mm';
-        const bodyWidth = is80 ? '68mm' : '42mm';
-        const charWidth = is80 ? 48 : 32;
-        const fontSize = is80 ? '10pt' : '8pt';
-        const headerSize = is80 ? '12pt' : '10pt';
-        const totalSize = is80 ? '11pt' : '9pt';
+        const bodyWidth = is80 ? '66mm' : '42mm';
+        const baseFont = is80 ? '9pt' : '8pt';
+        const smallFont = is80 ? '8pt' : '7pt';
+        const headerFont = is80 ? '12pt' : '10pt';
+        const totalFont = is80 ? '12pt' : '10pt';
 
         const escapeHtml = (s: string) =>
             String(s ?? '')
@@ -786,28 +789,7 @@ export default function POSPage() {
                 .replace(/"/g, '&quot;')
                 .replace(/'/g, '&#39;');
 
-        const cedi = `GH${'\u20B5'}`;
-
-        const padRight = (text: string, width: number) => {
-            const t = text.slice(0, width);
-            return t + ' '.repeat(Math.max(0, width - t.length));
-        };
-
-        const twoCol = (left: string, right: string) => {
-            const r = right.slice(0, Math.min(right.length, charWidth - 1));
-            const leftMax = Math.max(1, charWidth - r.length);
-            return padRight(left, leftMax) + r;
-        };
-
-        const center = (text: string) => {
-            const t = text.slice(0, charWidth);
-            const pad = Math.max(0, Math.floor((charWidth - t.length) / 2));
-            return ' '.repeat(pad) + t;
-        };
-
-        const rule = () => '-'.repeat(charWidth);
-
-        const formatMoney = (n: number) => `${cedi}${n.toFixed(2)}`;
+        const money = (n: number) => `GH&#8373;${Number(n || 0).toFixed(2)}`;
 
         const saleAt = parsePosOrderTimestamp({
             createdAt: completedOrder.createdAt,
@@ -815,10 +797,6 @@ export default function POSPage() {
         });
         const dateStr = formatReceiptDate(saleAt);
         const timeStr = formatReceiptTime(saleAt);
-
-        const orderLabel = completedOrder.orderNumber.length > charWidth - 1
-            ? `#${completedOrder.orderNumber.slice(-(charWidth - 2))}`
-            : `#${completedOrder.orderNumber}`;
 
         const payLabel =
             receiptPaymentMethod === 'cash'
@@ -829,116 +807,123 @@ export default function POSPage() {
                         ? 'MOMO'
                         : String(receiptPaymentMethod || '').toUpperCase();
 
-        const lines: string[] = [
-            center('Maries Hair'),
-            center('Kpakpo mankralo road 55'),
-            center('Mataheko'),
-            center('0547742920'),
-            rule(),
-            twoCol('Order', orderLabel),
-            twoCol('Date', dateStr),
-            twoCol('Time', timeStr),
-            twoCol('Pay', payLabel),
-            rule(),
-            twoCol('Item', 'Amt'),
-        ];
+        // Short order ref: last 6 digits of the timestamp-based number
+        const orderRef = escapeHtml(String(completedOrder.orderNumber));
 
-        for (const i of items) {
-            const variantBit = i.variantDisplay ? ` ${i.variantDisplay}` : '';
-            const name = `${i.name}${variantBit}`.trim();
-            const qty = i.cartQuantity;
-            const amt = (i.price * qty).toFixed(2);
-            const qtyPrefix = qty > 1 ? `${qty}x ` : '';
-            const itemLine = `${qtyPrefix}${name}`;
-            lines.push(twoCol(itemLine, amt));
-        }
+        const itemsHtml = items.map((i: any) => {
+            const variantBit = i.variantDisplay ? ` (${i.variantDisplay})` : '';
+            const name = escapeHtml(`${i.name}${variantBit}`.trim());
+            const qty = Number(i.cartQuantity) || 0;
+            const unit = Number(i.price) || 0;
+            return `
+      <div class="item">
+        <div class="item-name">${name}</div>
+        <div class="row">
+          <span>${qty} x ${money(unit)}</span>
+          <span class="val bold">${money(unit * qty)}</span>
+        </div>
+      </div>`;
+        }).join('');
 
-        lines.push(rule());
-        lines.push(twoCol('TOTAL', formatMoney(completedOrder.total)));
-
-        if (receiptPaymentMethod === 'cash' && receiptTendered != null) {
-            lines.push(twoCol('Tendered', formatMoney(receiptTendered)));
-            if (receiptChange > 0) {
-                lines.push(twoCol('Change', formatMoney(receiptChange)));
-            }
-        }
-
-        lines.push(rule());
-        lines.push(center('Thank you for shopping!'));
-        lines.push(center('shopmarieshair.com'));
-
-        const totalLine = twoCol('TOTAL', formatMoney(completedOrder.total));
-
-        const receiptBody = lines
-            .map((line) => {
-                const escaped = escapeHtml(line);
-                if (line === center('Maries Hair')) {
-                    return `<span class="store-name">${escapeHtml(line.trim())}</span>`;
-                }
-                if (line === totalLine) {
-                    return `<span class="total-line">${escaped}</span>`;
-                }
-                return escaped;
-            })
-            .join('\n');
+        const cashHtml = (receiptPaymentMethod === 'cash' && receiptTendered != null) ? `
+      <div class="row"><span>Tendered</span><span class="val">${money(receiptTendered)}</span></div>
+      <div class="row bold"><span>Change</span><span class="val">${money(receiptChange)}</span></div>
+    ` : '';
 
         const receiptHtml = `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Receipt ${escapeHtml(completedOrder.orderNumber)}</title>
+<title>Receipt ${orderRef}</title>
 <style>
-    @page {
-        size: ${pageSize};
-        margin: 2mm ${sideMargin};
-    }
-
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-
-    html, body {
-        background: #fff;
-        color: #000;
-    }
-
-    body {
-        font-family: 'Courier New', Courier, 'Liberation Mono', monospace;
-        font-size: ${fontSize};
-        line-height: 1.2;
-        width: ${bodyWidth};
-        max-width: ${bodyWidth};
-        margin: 0 auto;
-        -webkit-print-color-adjust: exact;
-        print-color-adjust: exact;
-    }
-
-    pre.receipt {
-        font-family: inherit;
-        font-size: inherit;
-        line-height: inherit;
-        white-space: pre;
-        overflow: hidden;
-        width: 100%;
-        margin: 0;
-        padding: 0;
-    }
-
-    pre.receipt .store-name {
-        display: block;
-        font-size: ${headerSize};
-        font-weight: 700;
-        text-align: center;
-        margin-bottom: 1mm;
-    }
-
-    pre.receipt .total-line {
-        display: block;
-        font-size: ${totalSize};
-        font-weight: 700;
-    }
+  @page { size: ${pageSize}; margin: 2mm; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { background: #fff; color: #000; }
+  body {
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: ${baseFont};
+    line-height: 1.3;
+    width: ${bodyWidth};
+    max-width: ${bodyWidth};
+    margin: 0 auto;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .section {
+    border-bottom: 1px dashed #000;
+    padding-bottom: 1.2mm;
+    margin-bottom: 1.2mm;
+  }
+  .center { text-align: center; }
+  .bold { font-weight: 700; }
+  .small { font-size: ${smallFont}; }
+  .store-name {
+    font-size: ${headerFont};
+    font-weight: 900;
+    letter-spacing: 0.5pt;
+  }
+  .row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 2mm;
+  }
+  .row .val {
+    white-space: nowrap;
+    flex-shrink: 0;
+    text-align: right;
+  }
+  .order-no {
+    word-break: break-all;
+    font-weight: 700;
+  }
+  .item { margin-bottom: 1.2mm; }
+  .item-name {
+    font-weight: 700;
+    overflow-wrap: break-word;
+    word-break: break-word;
+  }
+  .total-section {
+    border-top: 1px solid #000;
+    border-bottom: 1px solid #000;
+    padding: 1.2mm 0;
+    margin-bottom: 1.2mm;
+  }
+  .total-row { font-size: ${totalFont}; font-weight: 900; }
 </style>
 </head>
 <body>
-<pre class="receipt">${receiptBody}</pre>
+  <div class="section center">
+    <div class="store-name">MARIES HAIR</div>
+    <div class="small">Kpakpo mankralo road 55, Mataheko</div>
+    <div class="small">Tel: 0547742920</div>
+  </div>
+
+  <div class="section">
+    <div class="small">Order:</div>
+    <div class="order-no small">${orderRef}</div>
+    <div class="row"><span>Date</span><span class="val">${escapeHtml(dateStr)}</span></div>
+    <div class="row"><span>Time</span><span class="val">${escapeHtml(timeStr)}</span></div>
+    <div class="row"><span>Payment</span><span class="val bold">${escapeHtml(payLabel)}</span></div>
+  </div>
+
+  <div class="section">
+    <div class="bold small" style="margin-bottom:1mm;">ITEMS</div>
+    ${itemsHtml}
+  </div>
+
+  <div class="total-section">
+    <div class="row total-row"><span>TOTAL</span><span class="val">${money(completedOrder.total)}</span></div>
+  </div>
+
+  <div class="section">
+    ${cashHtml || '<div class="row"><span>Paid</span><span class="val bold">' + money(completedOrder.total) + '</span></div>'}
+  </div>
+
+  <div class="center small">
+    <div class="bold">Thank you for shopping!</div>
+    <div>www.shopmarieshair.com</div>
+  </div>
 </body>
 </html>`;
 
