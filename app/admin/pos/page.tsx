@@ -86,7 +86,8 @@ function variantDisplayName(v: { name: string; option1?: string | null; option2?
 function formatPosProduct(
     p: any,
     salesActive: boolean,
-    discountPercent: number
+    discountPercent: number,
+    strictDiscount: boolean
 ): Product {
     const rawVariants = p.product_variants || [];
     const variants: PosVariant[] = rawVariants.map((v: any) => {
@@ -98,6 +99,7 @@ function formatPosProduct(
             variantSalePrice: v.sale_price,
             compareAtPrice: p.compare_at_price,
             discountPercent,
+            strictDiscount,
         }).effective;
         return {
             id: v.id,
@@ -116,6 +118,7 @@ function formatPosProduct(
         salePrice: p.sale_price,
         compareAtPrice: p.compare_at_price,
         discountPercent,
+        strictDiscount,
     }).effective;
     const displayPrice = hasVariants
         ? Math.min(...variants.map((v) => v.price), baseEff)
@@ -146,7 +149,7 @@ export default function POSPage() {
     const [searchQuery, setSearchQuery] = useState('');
     const [searchResults, setSearchResults] = useState<Product[] | null>(null);
     const [searchingRemote, setSearchingRemote] = useState(false);
-    const [pricingState, setPricingState] = useState({ salesActive: false, discountPercent: 0 });
+    const [pricingState, setPricingState] = useState({ salesActive: false, discountPercent: 0, strictDiscount: false });
     const [loading, setLoading] = useState(true);
     const [isMobileCartOpen, setIsMobileCartOpen] = useState(false);
     const [variantPickerProduct, setVariantPickerProduct] = useState<Product | null>(null);
@@ -205,8 +208,8 @@ export default function POSPage() {
                 .select('value')
                 .eq('key', 'store_pricing')
                 .maybeSingle();
-            const { sales_active: salesActive, discount_percent: discountPercent } = parseStorePricingValue(pricingRow?.value);
-            setPricingState({ salesActive, discountPercent });
+            const { sales_active: salesActive, discount_percent: discountPercent, strict_discount: strictDiscount } = parseStorePricingValue(pricingRow?.value);
+            setPricingState({ salesActive, discountPercent, strictDiscount });
 
             const { data: prodData } = await supabase
                 .from('products')
@@ -221,7 +224,7 @@ export default function POSPage() {
                 .limit(1000);
 
             if (prodData) {
-                const formatted: Product[] = prodData.map((p: any) => formatPosProduct(p, salesActive, discountPercent));
+                const formatted: Product[] = prodData.map((p: any) => formatPosProduct(p, salesActive, discountPercent, strictDiscount));
                 setProducts(formatted);
 
                 // Extract Categories
@@ -306,7 +309,7 @@ export default function POSPage() {
         }
         const tick = setTimeout(async () => {
             setSearchingRemote(true);
-            const { salesActive, discountPercent } = pricingState;
+            const { salesActive, discountPercent, strictDiscount } = pricingState;
             const escaped = escapeIlike(q);
             const pattern = `%${escaped}%`;
             const sel = `
@@ -323,7 +326,7 @@ export default function POSPage() {
                 ]);
                 const map = new Map<string, Product>();
                 for (const row of [...(byName.data || []), ...(bySku.data || []), ...(bySlug.data || [])]) {
-                    map.set(row.id, formatPosProduct(row, salesActive, discountPercent));
+                    map.set(row.id, formatPosProduct(row, salesActive, discountPercent, strictDiscount));
                 }
                 const merged = Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
                 setSearchResults(merged.slice(0, 400));
@@ -493,9 +496,11 @@ export default function POSPage() {
                 .select('value')
                 .eq('key', 'store_pricing')
                 .maybeSingle();
-            const { sales_active: checkoutSalesActive, discount_percent: checkoutDiscountPercent } = parseStorePricingValue(
-                checkoutPricingRow?.value
-            );
+            const {
+                sales_active: checkoutSalesActive,
+                discount_percent: checkoutDiscountPercent,
+                strict_discount: checkoutStrictDiscount,
+            } = parseStorePricingValue(checkoutPricingRow?.value);
             const { data: checkoutProducts, error: checkoutProductsError } =
                 await supabase
                     .from('products')
@@ -517,7 +522,8 @@ export default function POSPage() {
                     p,
                     item.variant,
                     checkoutSalesActive,
-                    checkoutDiscountPercent
+                    checkoutDiscountPercent,
+                    checkoutStrictDiscount
                 );
                 posSubtotal += unit * item.cartQuantity;
                 resolvedLines.push({ item, unit });

@@ -25,19 +25,30 @@ export function resolveProductPrice(args: {
   salePrice?: number | null;
   compareAtPrice?: number | null;
   discountPercent?: number;
+  /** When true (and discountPercent > 0), per-product sale prices are ignored
+   *  and the bulk discount applies to the regular price of EVERY product. */
+  strictDiscount?: boolean;
 }): ResolvedPrice {
-  const { salesActive, price, salePrice, compareAtPrice, discountPercent = 0 } = args;
+  const {
+    salesActive,
+    price,
+    salePrice,
+    compareAtPrice,
+    discountPercent = 0,
+    strictDiscount = false,
+  } = args;
   const base = Number(price) || 0;
 
   if (salesActive) {
-    // Per-product sale price takes priority
-    if (isValidSalePrice(salePrice)) {
+    const strictMode = strictDiscount && discountPercent > 0;
+    // Per-product sale price takes priority (unless strict mode is on)
+    if (!strictMode && isValidSalePrice(salePrice)) {
       return {
         effective: Number(salePrice),
         originalDisplay: base > Number(salePrice) ? base : null,
       };
     }
-    // Bulk discount fallback
+    // Bulk discount (fallback normally; the only rule in strict mode)
     if (discountPercent > 0) {
       const discounted = applyDiscount(base, discountPercent);
       return {
@@ -61,6 +72,9 @@ export function resolveVariantPrice(args: {
   variantSalePrice?: number | null;
   compareAtPrice?: number | null;
   discountPercent?: number;
+  /** When true (and discountPercent > 0), sale prices are ignored and the
+   *  bulk discount applies to the variant's regular price. */
+  strictDiscount?: boolean;
 }): ResolvedPrice {
   const {
     salesActive,
@@ -70,18 +84,20 @@ export function resolveVariantPrice(args: {
     variantSalePrice,
     compareAtPrice,
     discountPercent = 0,
+    strictDiscount = false,
   } = args;
 
   const vPrice = Number(variantPrice) || Number(productPrice) || 0;
 
   if (salesActive) {
+    const strictMode = strictDiscount && discountPercent > 0;
     const vSale = isValidSalePrice(variantSalePrice)
       ? Number(variantSalePrice)
       : null;
     const pSale = isValidSalePrice(productSalePrice)
       ? Number(productSalePrice)
       : null;
-    const chosenSale = vSale ?? pSale;
+    const chosenSale = strictMode ? null : vSale ?? pSale;
 
     if (chosenSale != null) {
       const regular = vPrice;
@@ -91,7 +107,7 @@ export function resolveVariantPrice(args: {
       };
     }
 
-    // Bulk discount fallback
+    // Bulk discount (fallback normally; the only rule in strict mode)
     if (discountPercent > 0) {
       const discounted = applyDiscount(vPrice, discountPercent);
       return {
@@ -112,15 +128,20 @@ export function resolveVariantPrice(args: {
 /** Parse store_pricing JSON from site_settings.value */
 export function parseStorePricingValue(
   value: unknown
-): { sales_active: boolean; discount_percent: number } {
+): { sales_active: boolean; discount_percent: number; strict_discount: boolean } {
   if (value && typeof value === 'object' && 'sales_active' in value) {
-    const obj = value as { sales_active?: unknown; discount_percent?: unknown };
+    const obj = value as {
+      sales_active?: unknown;
+      discount_percent?: unknown;
+      strict_discount?: unknown;
+    };
     return {
       sales_active: Boolean(obj.sales_active),
       discount_percent: Number(obj.discount_percent) || 0,
+      strict_discount: Boolean(obj.strict_discount),
     };
   }
-  return { sales_active: false, discount_percent: 0 };
+  return { sales_active: false, discount_percent: 0, strict_discount: false };
 }
 
 /** Map DB product + variants to ProductCard price props */
@@ -135,7 +156,8 @@ export function getProductCardPricing(
     }>;
   },
   salesActive: boolean,
-  discountPercent: number = 0
+  discountPercent: number = 0,
+  strictDiscount: boolean = false
 ): {
   price: number;
   minVariantPrice?: number;
@@ -152,6 +174,7 @@ export function getProductCardPricing(
       salePrice: p.sale_price,
       compareAtPrice: p.compare_at_price,
       discountPercent,
+      strictDiscount,
     });
     const orig = r.originalDisplay ?? undefined;
     return {
@@ -170,6 +193,7 @@ export function getProductCardPricing(
       variantSalePrice: v.sale_price,
       compareAtPrice: p.compare_at_price,
       discountPercent,
+      strictDiscount,
     })
   );
   const minEff = Math.min(...resolvedList.map((r) => r.effective));
@@ -206,7 +230,8 @@ export function resolveCartLineUnitPrice(
   },
   variantLabel: string | undefined | null,
   salesActive: boolean,
-  discountPercent: number = 0
+  discountPercent: number = 0,
+  strictDiscount: boolean = false
 ): number {
   const variants = product.product_variants || [];
   if (!variantLabel?.trim() || variants.length === 0) {
@@ -216,6 +241,7 @@ export function resolveCartLineUnitPrice(
       salePrice: product.sale_price,
       compareAtPrice: product.compare_at_price,
       discountPercent,
+      strictDiscount,
     }).effective;
   }
   const parts = variantLabel
@@ -246,6 +272,7 @@ export function resolveCartLineUnitPrice(
       salePrice: product.sale_price,
       compareAtPrice: product.compare_at_price,
       discountPercent,
+      strictDiscount,
     }).effective;
   }
   return resolveVariantPrice({
@@ -256,5 +283,6 @@ export function resolveCartLineUnitPrice(
     variantSalePrice: v.sale_price,
     compareAtPrice: product.compare_at_price,
     discountPercent,
+    strictDiscount,
   }).effective;
 }

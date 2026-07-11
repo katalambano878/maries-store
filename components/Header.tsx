@@ -18,7 +18,7 @@ export default function Header() {
   const [searchHits, setSearchHits] = useState<StorefrontSearchHit[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const debouncedSearch = useDebouncedValue(searchQuery, 280);
-  const { salesActive, discountPercent } = useStorePricing();
+  const { salesActive, discountPercent, strictDiscount } = useStorePricing();
   const [wishlistCount, setWishlistCount] = useState(0);
   const [user, setUser] = useState<any>(null);
 
@@ -279,6 +279,7 @@ export default function Header() {
                       salePrice: p.sale_price,
                       compareAtPrice: p.compare_at_price,
                       discountPercent,
+                      strictDiscount,
                     });
                     const img = p.image || '/logo.png';
                     return (

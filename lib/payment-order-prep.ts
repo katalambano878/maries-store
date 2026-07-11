@@ -130,9 +130,11 @@ export async function prepareOrderForPayment(orderId: string): Promise<PreparedO
     .select('value')
     .eq('key', 'store_pricing')
     .maybeSingle();
-  const { sales_active: salesActive, discount_percent: discountPercent } = parseStorePricingValue(
-    pricingRow?.value
-  );
+  const {
+    sales_active: salesActive,
+    discount_percent: discountPercent,
+    strict_discount: strictDiscount,
+  } = parseStorePricingValue(pricingRow?.value);
 
   const { data: products, error: prodErr } = await supabaseAdmin
     .from('products')
@@ -193,7 +195,8 @@ export async function prepareOrderForPayment(orderId: string): Promise<PreparedO
       product,
       item.variant_name,
       salesActive,
-      discountPercent
+      discountPercent,
+      strictDiscount
     );
     const lineTotal = unit * item.quantity;
     computedSubtotal += lineTotal;

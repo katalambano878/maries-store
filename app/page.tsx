@@ -14,7 +14,7 @@ import { getProductCardPricing } from '@/lib/pricing';
 
 export default function Home() {
   usePageTitle('');
-  const { salesActive, discountPercent } = useStorePricing();
+  const { salesActive, discountPercent, strictDiscount } = useStorePricing();
   const [featuredProducts, setFeaturedProducts] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -390,7 +390,7 @@ export default function Home() {
               {featuredProducts.map((product) => {
                 const variants = product.product_variants || [];
                 const hasVariants = variants.length > 0;
-                const pricing = getProductCardPricing(product, salesActive, discountPercent);
+                const pricing = getProductCardPricing(product, salesActive, discountPercent, strictDiscount);
                 const totalVariantStock = hasVariants ? variants.reduce((sum: number, v: any) => sum + (v.quantity || 0), 0) : 0;
                 const effectiveStock = hasVariants ? totalVariantStock : product.quantity;
 

@@ -235,7 +235,7 @@ export default function CheckoutPage() {
         .select('value')
         .eq('key', 'store_pricing')
         .maybeSingle();
-      const { sales_active: salesActive, discount_percent: discountPercent } = parseStorePricingValue(pricingRow?.value);
+      const { sales_active: salesActive, discount_percent: discountPercent, strict_discount: strictDiscount } = parseStorePricingValue(pricingRow?.value);
 
       const { data: productsFull, error: productsFullError } =
         uniqueIds.length > 0
@@ -261,7 +261,7 @@ export default function CheckoutPage() {
             `Product not found: ${item.name}. Please remove it from your cart and try again.`
           );
         }
-        const unit = resolveCartLineUnitPrice(p, item.variant, salesActive, discountPercent);
+        const unit = resolveCartLineUnitPrice(p, item.variant, salesActive, discountPercent, strictDiscount);
         computedSubtotal += unit * item.quantity;
         const prodMeta = p.metadata;
         orderItemsPayload.push({

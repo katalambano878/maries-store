@@ -15,7 +15,7 @@ import { getProductCardPricing } from '@/lib/pricing';
 function ShopContent() {
   usePageTitle('Shop All Products');
   const searchParams = useSearchParams();
-  const { salesActive, discountPercent } = useStorePricing();
+  const { salesActive, discountPercent, strictDiscount } = useStorePricing();
 
   // State
   const [products, setProducts] = useState<any[]>([]);
@@ -158,7 +158,7 @@ function ShopContent() {
           const formattedProducts = data.map((p: any) => {
             const variants = p.product_variants || [];
             const hasVariants = variants.length > 0;
-            const pricing = getProductCardPricing(p, salesActive, discountPercent);
+            const pricing = getProductCardPricing(p, salesActive, discountPercent, strictDiscount);
             const totalVariantStock = hasVariants ? variants.reduce((sum: number, v: any) => sum + (v.quantity || 0), 0) : 0;
             const effectiveStock = hasVariants ? totalVariantStock : p.quantity;
             // Extract unique colors from option2

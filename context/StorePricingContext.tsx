@@ -14,6 +14,7 @@ import { parseStorePricingValue } from '@/lib/pricing';
 type StorePricingContextType = {
   salesActive: boolean;
   discountPercent: number;
+  strictDiscount: boolean;
   loading: boolean;
   refresh: () => Promise<void>;
 };
@@ -21,6 +22,7 @@ type StorePricingContextType = {
 const StorePricingContext = createContext<StorePricingContextType>({
   salesActive: false,
   discountPercent: 0,
+  strictDiscount: false,
   loading: true,
   refresh: async () => {},
 });
@@ -28,6 +30,7 @@ const StorePricingContext = createContext<StorePricingContextType>({
 export function StorePricingProvider({ children }: { children: ReactNode }) {
   const [salesActive, setSalesActive] = useState(false);
   const [discountPercent, setDiscountPercent] = useState(0);
+  const [strictDiscount, setStrictDiscount] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
@@ -42,15 +45,18 @@ export function StorePricingProvider({ children }: { children: ReactNode }) {
         console.warn('[StorePricing] fetch error:', error.message);
         setSalesActive(false);
         setDiscountPercent(0);
+        setStrictDiscount(false);
         return;
       }
 
       const parsed = parseStorePricingValue(data?.value);
       setSalesActive(parsed.sales_active);
       setDiscountPercent(parsed.discount_percent);
+      setStrictDiscount(parsed.strict_discount);
     } catch {
       setSalesActive(false);
       setDiscountPercent(0);
+      setStrictDiscount(false);
     } finally {
       setLoading(false);
     }
@@ -61,7 +67,9 @@ export function StorePricingProvider({ children }: { children: ReactNode }) {
   }, [refresh]);
 
   return (
-    <StorePricingContext.Provider value={{ salesActive, discountPercent, loading, refresh }}>
+    <StorePricingContext.Provider
+      value={{ salesActive, discountPercent, strictDiscount, loading, refresh }}
+    >
       {children}
     </StorePricingContext.Provider>
   );

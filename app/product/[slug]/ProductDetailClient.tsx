@@ -43,7 +43,7 @@ export default function ProductDetailClient({ slug }: { slug: string }) {
   const [relatedProducts, setRelatedProducts] = useState<any[]>([]);
 
   const { addToCart } = useCart();
-  const { salesActive, discountPercent } = useStorePricing();
+  const { salesActive, discountPercent, strictDiscount } = useStorePricing();
 
   useEffect(() => {
     async function fetchProduct() {
@@ -206,6 +206,7 @@ export default function ProductDetailClient({ slug }: { slug: string }) {
         variantSalePrice: selectedVariant.sale_price,
         compareAtPrice: product.compare_at_price,
         discountPercent,
+        strictDiscount,
       });
       activePrice = resolved.effective;
       activeOriginalDisplay = resolved.originalDisplay;
@@ -216,6 +217,7 @@ export default function ProductDetailClient({ slug }: { slug: string }) {
         salePrice: product.sale_price,
         compareAtPrice: product.compare_at_price,
         discountPercent,
+        strictDiscount,
       });
       activePrice = resolved.effective;
       activeOriginalDisplay = resolved.originalDisplay;
@@ -288,7 +290,7 @@ export default function ProductDetailClient({ slug }: { slug: string }) {
     discount = Math.round((1 - activePrice / product.compare_at_price) * 100);
   }
 
-  const overallPricing = getProductCardPricing(product, salesActive, discountPercent);
+  const overallPricing = getProductCardPricing(product, salesActive, discountPercent, strictDiscount);
   const minVariantPrice = overallPricing.minVariantPrice ?? overallPricing.price;
 
   const productSchema = generateProductSchema({
@@ -523,6 +525,7 @@ export default function ProductDetailClient({ slug }: { slug: string }) {
                                     variantSalePrice: variant.sale_price,
                                     compareAtPrice: product.compare_at_price,
                                     discountPercent,
+                                    strictDiscount,
                                   }).effective.toFixed(2)}
                                 </span>
                               </button>
@@ -573,6 +576,7 @@ export default function ProductDetailClient({ slug }: { slug: string }) {
                                     variantSalePrice: variant.sale_price,
                                     compareAtPrice: product.compare_at_price,
                                     discountPercent,
+                                    strictDiscount,
                                   }).effective.toFixed(2)}
                                 </span>
                               </button>
@@ -751,7 +755,7 @@ export default function ProductDetailClient({ slug }: { slug: string }) {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
                 {relatedProducts.map((p) => {
-                  const pricing = getProductCardPricing(p.rawProduct, salesActive, discountPercent);
+                  const pricing = getProductCardPricing(p.rawProduct, salesActive, discountPercent, strictDiscount);
                   return (
                     <ProductCard
                       key={p.id}

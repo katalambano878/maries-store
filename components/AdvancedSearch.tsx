@@ -17,7 +17,7 @@ export default function AdvancedSearch() {
   const [isVoiceActive, setIsVoiceActive] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const { salesActive, discountPercent } = useStorePricing();
+  const { salesActive, discountPercent, strictDiscount } = useStorePricing();
 
   useEffect(() => {
     const saved = localStorage.getItem('recentSearches');
@@ -171,6 +171,7 @@ export default function AdvancedSearch() {
                   salePrice: product.sale_price,
                   compareAtPrice: product.compare_at_price,
                   discountPercent,
+                  strictDiscount,
                 });
                 const img = product.image || '/logo.png';
                 return (

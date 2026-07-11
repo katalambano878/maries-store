@@ -7,10 +7,12 @@ import { parseStorePricingValue } from '@/lib/pricing';
 export default function AdminSalesPage() {
   const [salesActive, setSalesActive] = useState(false);
   const [discountPercent, setDiscountPercent] = useState(0);
+  const [strictDiscount, setStrictDiscount] = useState(false);
   const [customDiscount, setCustomDiscount] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [savingDiscount, setSavingDiscount] = useState(false);
+  const [savingStrict, setSavingStrict] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [discountSuccess, setDiscountSuccess] = useState<string | null>(null);
@@ -48,6 +50,7 @@ export default function AdminSalesPage() {
       const parsed = parseStorePricingValue(data?.value);
       setSalesActive(parsed.sales_active);
       setDiscountPercent(parsed.discount_percent);
+      setStrictDiscount(parsed.strict_discount);
       if (parsed.discount_percent > 0) {
         setCustomDiscount(String(parsed.discount_percent));
       }
@@ -70,7 +73,7 @@ export default function AdminSalesPage() {
       const { error: upsertError } = await supabase.from('site_settings').upsert(
         {
           key: 'store_pricing',
-          value: { sales_active: next, discount_percent: discountPercent },
+          value: { sales_active: next, discount_percent: discountPercent, strict_discount: strictDiscount },
           category: 'pricing',
         },
         { onConflict: 'key' }
@@ -93,7 +96,7 @@ export default function AdminSalesPage() {
       const { error: upsertError } = await supabase.from('site_settings').upsert(
         {
           key: 'store_pricing',
-          value: { sales_active: salesActive, discount_percent: percent },
+          value: { sales_active: salesActive, discount_percent: percent, strict_discount: strictDiscount },
           category: 'pricing',
         },
         { onConflict: 'key' }
@@ -111,6 +114,35 @@ export default function AdminSalesPage() {
       setError(e instanceof Error ? e.message : 'Could not save discount');
     } finally {
       setSavingDiscount(false);
+    }
+  };
+
+  const handleStrictToggle = async (next: boolean) => {
+    if (!isAdmin) return;
+    setSavingStrict(true);
+    setError(null);
+    setDiscountSuccess(null);
+    try {
+      const { error: upsertError } = await supabase.from('site_settings').upsert(
+        {
+          key: 'store_pricing',
+          value: { sales_active: salesActive, discount_percent: discountPercent, strict_discount: next },
+          category: 'pricing',
+        },
+        { onConflict: 'key' }
+      );
+      if (upsertError) throw upsertError;
+      setStrictDiscount(next);
+      setDiscountSuccess(
+        next
+          ? `Strict mode ON — every product now shows ${discountPercent || 'the set'}% off its regular price`
+          : 'Strict mode OFF — per-product sale prices are back in charge'
+      );
+      setTimeout(() => setDiscountSuccess(null), 4000);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Could not save');
+    } finally {
+      setSavingStrict(false);
     }
   };
 
@@ -280,6 +312,50 @@ export default function AdminSalesPage() {
               </div>
             </div>
 
+            {/* Strict mode: same % on every product */}
+            <div
+              className={`rounded-xl border-2 p-4 transition-colors ${
+                strictDiscount ? 'border-red-300 bg-red-50' : 'border-gray-200 bg-gray-50'
+              }`}
+            >
+              <div className="flex items-center justify-between gap-4 flex-wrap">
+                <div className="flex-1 min-w-[220px]">
+                  <p className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+                    <i className="ri-flashlight-fill text-red-500" />
+                    Same discount on EVERYTHING
+                  </p>
+                  <p className="text-xs text-gray-600 mt-1">
+                    Ignores each product&apos;s own sale price and applies the percentage above to the{' '}
+                    <strong>regular price of every single product</strong>. Example at 50%: a GH₵40.00
+                    product becomes GH₵20.00 — even if it had its own sale price of GH₵35.00.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  disabled={savingStrict}
+                  onClick={() => handleStrictToggle(!strictDiscount)}
+                  className={`relative inline-flex h-8 w-[3rem] shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 ${
+                    strictDiscount ? 'bg-red-600' : 'bg-gray-300'
+                  } ${savingStrict ? 'opacity-60 cursor-wait' : ''}`}
+                  role="switch"
+                  aria-checked={strictDiscount}
+                >
+                  <span
+                    className={`pointer-events-none inline-block h-7 w-7 transform rounded-full bg-white shadow ring-0 transition ${
+                      strictDiscount ? 'translate-x-[1.2rem]' : 'translate-x-0.5'
+                    }`}
+                  />
+                </button>
+              </div>
+              {strictDiscount && discountPercent === 0 && (
+                <p className="mt-3 text-xs font-medium text-amber-800 bg-amber-50 border border-amber-100 rounded-lg p-2.5 flex items-start gap-2">
+                  <i className="ri-alert-line shrink-0 mt-0.5" />
+                  Strict mode is ON but the percentage is 0 — pick a preset or enter a custom percentage
+                  above so customers actually see a discount.
+                </p>
+              )}
+            </div>
+
             {/* Clear discount */}
             {discountPercent > 0 && (
               <button
@@ -306,8 +382,10 @@ export default function AdminSalesPage() {
         {isAdmin && (
           <div className="mt-4 pt-4 border-t border-gray-100">
             <p className="text-xs text-gray-500">
-              <strong>How it works:</strong> When Store-wide sale is ON, any product with a manually set sale price will use that price.
-              Products <em>without</em> a sale price will have this bulk discount applied to their regular price automatically.
+              <strong>How it works:</strong> When Store-wide sale is ON, any product with a manually set sale price will use that price,
+              and products <em>without</em> one get the bulk discount on their regular price.
+              Turn on <strong>&ldquo;Same discount on everything&rdquo;</strong> to skip the per-product sale prices entirely and give
+              every product the exact same percentage off its regular price.
             </p>
           </div>
         )}
