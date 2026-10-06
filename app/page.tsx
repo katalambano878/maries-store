@@ -21,13 +21,17 @@ export default function Home() {
 
   // Config State - Managed in Code
   const [currentSlide, setCurrentSlide] = useState(0);
+  const [heroPaused, setHeroPaused] = useState(false);
+  const slideMs = 5500;
 
   useEffect(() => {
+    if (heroPaused) return;
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
     const timer = setInterval(() => {
       setCurrentSlide((prev) => (prev + 1) % 4);
-    }, 3000);
+    }, slideMs);
     return () => clearInterval(timer);
-  }, []);
+  }, [heroPaused]);
 
   const config: {
     hero: {
@@ -124,14 +128,18 @@ export default function Home() {
       {renderBanners()}
 
       {/* Hero Section - God Level Design */}
-      <section className="relative w-full h-[85vh] md:h-[95vh] overflow-hidden bg-[#0a0a0a] group">
+      <section
+        className="relative w-full h-[calc(100dvh-4rem)] min-h-[560px] overflow-hidden bg-[#0a0a0a] group"
+        onMouseEnter={() => setHeroPaused(true)}
+        onMouseLeave={() => setHeroPaused(false)}
+      >
 
         {/* Premium Progress Bar */}
         <div className="absolute top-0 left-0 right-0 z-40 h-[2px] bg-white/5">
           <div
             key={currentSlide}
-            className="h-full bg-gradient-to-r from-transparent via-white/80 to-white shadow-[0_0_15px_rgba(255,255,255,0.5)] animate-progress origin-left"
-            style={{ animationDuration: '3000ms' }}
+            className="h-full bg-white/90 origin-left animate-progress"
+            style={{ animationDuration: `${slideMs}ms`, animationPlayState: heroPaused ? 'paused' : 'running' }}
           ></div>
         </div>
 
@@ -206,9 +214,9 @@ export default function Home() {
             {/* Overlays — hidden on the preorder slide so the flyer image is fully visible */}
             {!slide.hideOverlay && (
               <>
-                <div className="absolute inset-0 bg-black/20"></div>
-                <div className="absolute inset-0 bg-gradient-to-r from-black/90 via-black/50 to-transparent"></div>
-                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/20"></div>
+                <div className="absolute inset-0 bg-black/10"></div>
+                <div className="absolute inset-0 bg-gradient-to-r from-black/70 via-black/30 to-transparent"></div>
+                <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-transparent to-black/10"></div>
                 <div className="absolute inset-0 opacity-[0.03] mix-blend-overlay pointer-events-none" style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg viewBox=%220 0 200 200%22 xmlns=%22http://www.w3.org/2000/svg%22%3E%3Cfilter id=%22noiseFilter%22%3E%3CfeTurbulence type=%22fractalNoise%22 baseFrequency=%220.65%22 numOctaves=%223%22 stitchTiles=%22stitch%22/%3E%3C/filter%3E%3Crect width=%22100%25%22 height=%22100%25%22 filter=%22url(%23noiseFilter)%22/%3E%3C/svg%3E")' }}></div>
               </>
             )}
@@ -299,7 +307,7 @@ export default function Home() {
                 {currentSlide === i && (
                   <span
                     className="absolute top-0 left-0 h-full bg-white block animate-progress origin-left"
-                    style={{ animationDuration: '3000ms' }}
+                    style={{ animationDuration: `${slideMs}ms`, animationPlayState: heroPaused ? 'paused' : 'running' }}
                   ></span>
                 )}
               </button>
