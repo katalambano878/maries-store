@@ -13,3 +13,16 @@ const OWN_STORAGE =
 export function localImage<T>(src: T): T {
     return (typeof src === 'string' ? src.replace(OWN_STORAGE, '') : src) as T;
 }
+
+/**
+ * A resized copy of one of the store's own photos for a plain <img>
+ * thumbnail (admin lists, POS, search), instead of the 2–3 MB original.
+ * `width` must be one of next.config's image sizes (e.g. 128, 256, 640).
+ * Other URLs (external, data:, blob: previews) are returned unchanged.
+ */
+export function thumbSrc(src: string | null | undefined, width: 128 | 256 | 640 = 256): string {
+    if (!src) return '';
+    const local = localImage(src);
+    if (!local.startsWith('/storage/v1/object/public/')) return src;
+    return `/_next/image?url=${encodeURIComponent(local)}&w=${width}&q=75`;
+}

@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { thumbSrc } from '@/lib/image-src';
 
 export default function AdminDashboard() {
   const [dateRange, setDateRange] = useState('7days'); // logic not implemented for this demo, just UI
@@ -428,7 +429,7 @@ export default function AdminDashboard() {
             {topProducts.map((product) => (
               <div key={product.id} className="border border-gray-200 rounded-xl p-4 hover:shadow-md transition-shadow">
                 <div className="aspect-square bg-gray-100 rounded-lg overflow-hidden mb-3">
-                  <img src={product.image} alt={product.name} className="w-full h-full object-cover" />
+                  <img src={thumbSrc(product.image)} loading="lazy" alt={product.name} className="w-full h-full object-cover" />
                 </div>
                 <h3 className="font-semibold text-gray-900 mb-2 line-clamp-2">{product.name}</h3>
                 <div className="mt-3 pt-3 border-t border-gray-200 flex items-center justify-between">

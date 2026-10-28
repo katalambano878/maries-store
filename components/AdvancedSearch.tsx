@@ -6,6 +6,7 @@ import { useStorePricing } from '@/context/StorePricingContext';
 import { resolveProductPrice } from '@/lib/pricing';
 import { useDebouncedValue } from '@/components/useDebouncedValue';
 import type { StorefrontSearchHit } from '@/lib/storefront-search-types';
+import { thumbSrc } from '@/lib/image-src';
 
 export default function AdvancedSearch() {
   const [isOpen, setIsOpen] = useState(false);
@@ -181,7 +182,7 @@ export default function AdvancedSearch() {
                     onClick={() => setIsOpen(false)}
                     className="flex items-center space-x-3 p-3 hover:bg-gray-50 rounded-lg transition-colors"
                   >
-                    <img src={img} alt="" className="w-12 h-12 object-cover object-center rounded-lg bg-gray-100" loading="lazy" />
+                    <img src={thumbSrc(img, 128)} alt="" className="w-12 h-12 object-cover object-center rounded-lg bg-gray-100" loading="lazy" />
                     <div className="flex-1 min-w-0">
                       <p className="font-semibold text-gray-900 text-sm line-clamp-2">{product.name}</p>
                       {product.categoryName && (

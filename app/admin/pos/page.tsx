@@ -13,6 +13,7 @@ import {
     formatReceiptTime,
     parsePosOrderTimestamp,
 } from '@/lib/receipt-datetime';
+import { thumbSrc } from '@/lib/image-src';
 
 interface PosVariant {
     id: string;
@@ -1175,7 +1176,7 @@ export default function POSPage() {
                         cart.map(item => (
                             <div key={item.lineKey} className="flex gap-3 p-3 bg-gray-50 rounded-lg group hover:bg-gray-100 transition-colors">
                                 <div className="w-16 h-16 bg-white rounded-md overflow-hidden flex-shrink-0 border border-gray-200">
-                                    <img src={item.image} className="w-full h-full object-cover" alt="" />
+                                    <img src={thumbSrc(item.image)} loading="lazy" className="w-full h-full object-cover" alt="" />
                                 </div>
                                 <div className="flex-1 min-w-0 flex flex-col justify-between">
                                     <div className="flex justify-between items-start gap-2">

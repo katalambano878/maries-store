@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useState } from 'react';
+import { thumbSrc } from '@/lib/image-src';
 
 export default function ProductEditor({ productId }: { productId: string }) {
   const [productName, setProductName] = useState('Premium Leather Crossbody Bag');
@@ -338,7 +339,7 @@ export default function ProductEditor({ productId }: { productId: string }) {
                 {images.map((image, index) => (
                   <div key={index} className="relative group">
                     <div className="aspect-square bg-gray-100 rounded-xl overflow-hidden border-2 border-gray-200">
-                      <img src={image} alt={`Product ${index + 1}`} className="w-full h-full object-cover" />
+                      <img src={thumbSrc(image)} alt={`Product ${index + 1}`} className="w-full h-full object-cover" />
                     </div>
                     {index === 0 && (
                       <span className="absolute top-2 left-2 bg-stone-700 text-white px-2 py-1 rounded text-xs font-semibold whitespace-nowrap">
