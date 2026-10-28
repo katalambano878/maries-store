@@ -69,3 +69,6 @@ env/
 *.tar
 *.tar.gz
 *.7z
+
+# Migration dumps and local dev env
+migration-artifacts/dumps/

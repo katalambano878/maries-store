@@ -1,9 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-const supabase = createClient(supabaseUrl, supabaseKey);
+import { supabaseAnon as supabase } from '@/lib/supabase-server';
 
 /** Escape % and _ so user input is literal in PostgreSQL ILIKE */
 function escapeIlike(s: string): string {

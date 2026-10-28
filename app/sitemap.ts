@@ -1,8 +1,5 @@
 import { MetadataRoute } from 'next';
-import { createClient } from '@supabase/supabase-js';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+import { supabaseAnon as supabase } from '@/lib/supabase-server';
 
 function normalizeSiteUrl(raw?: string): string {
   const fallback = 'https://www.shopmarieshair.com';
@@ -11,6 +8,10 @@ function normalizeSiteUrl(raw?: string): string {
   return raw;
 }
 const BASE_URL = normalizeSiteUrl(process.env.NEXT_PUBLIC_APP_URL);
+
+// Built from the database at runtime (the build container has no database
+// access) and refreshed hourly.
+export const revalidate = 3600;
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const now = new Date();
@@ -35,8 +36,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   let blogPages: MetadataRoute.Sitemap = [];
 
   try {
-    const supabase = createClient(supabaseUrl, supabaseKey);
-
     const { data: products } = await supabase
       .from('products')
       .select('slug, updated_at')

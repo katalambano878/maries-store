@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import { permanentRedirect } from 'next/navigation';
 import { cache } from 'react';
-import { supabase } from '@/lib/supabase';
+import { supabaseAnon as supabase } from '@/lib/supabase-server';
 import ProductDetailClient from './ProductDetailClient';
 
 type Params = { slug: string };

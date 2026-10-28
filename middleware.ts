@@ -1,9 +1,26 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { jwtVerify } from 'jose';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+/**
+ * Check the admin session cookie: a store-issued access token (see
+ * lib/db/auth.ts) whose app_metadata.role is admin or staff. Data access is
+ * still enforced per request by row-level security; this only keeps the
+ * dashboard shell away from shoppers.
+ */
+async function verifyStaffToken(token: string): Promise<{ userId: string; role: string } | null> {
+    const secret = process.env.AUTH_JWT_SECRET || process.env.JWT_SECRET;
+    if (!secret) return null;
+    try {
+        const { payload } = await jwtVerify(token, new TextEncoder().encode(secret));
+        if (payload.typ === 'refresh' || typeof payload.sub !== 'string') return null;
+        const role = (payload.app_metadata as { role?: string } | undefined)?.role;
+        if (role !== 'admin' && role !== 'staff') return null;
+        return { userId: payload.sub, role };
+    } catch {
+        return null;
+    }
+}
 
 export async function middleware(request: NextRequest) {
     const { pathname } = request.nextUrl;
@@ -29,40 +46,8 @@ export async function middleware(request: NextRequest) {
             return response;
         }
 
-        // Server-side auth check: verify the Supabase session cookie/token
-        // We set 'sb-access-token' explicitly on login, but also check other formats
-        let token: string | undefined;
-
-        // 1. Check our explicitly set cookie (most reliable)
-        token = request.cookies.get('sb-access-token')?.value;
-
-        // 2. Check Supabase's own cookie format
-        if (!token) {
-            const projectRef = supabaseUrl?.split('//')[1]?.split('.')[0];
-            token = request.cookies.get(`sb-${projectRef}-auth-token`)?.value;
-        }
-
-        // 3. Try to find any Supabase auth cookie (newer formats may encode as JSON)
-        if (!token) {
-            for (const [name, cookie] of request.cookies) {
-                if (name.startsWith('sb-') && (name.endsWith('-auth-token') || name.includes('auth'))) {
-                    try {
-                        const parsed = JSON.parse(cookie.value);
-                        if (Array.isArray(parsed) && parsed[0]) {
-                            token = parsed[0];
-                        } else if (typeof parsed === 'object' && parsed.access_token) {
-                            token = parsed.access_token;
-                        } else if (typeof parsed === 'string') {
-                            token = parsed;
-                        }
-                    } catch {
-                        // Not JSON, use raw value
-                        token = cookie.value;
-                    }
-                    if (token) break;
-                }
-            }
-        }
+        // The admin login page sets 'sb-access-token' after signing in.
+        const token = request.cookies.get('sb-access-token')?.value;
 
         if (!token) {
             // No auth token found — redirect to login
@@ -71,48 +56,15 @@ export async function middleware(request: NextRequest) {
             return NextResponse.redirect(loginUrl);
         }
 
-        // Verify the token is valid and user has admin/staff role
-        if (supabaseServiceKey) {
-            try {
-                const supabase = createClient(supabaseUrl, supabaseServiceKey, {
-                    auth: { autoRefreshToken: false, persistSession: false }
-                });
-
-                const { data: { user }, error } = await supabase.auth.getUser(token);
-
-                if (error || !user) {
-                    const loginUrl = new URL('/admin/login', request.url);
-                    loginUrl.searchParams.set('redirect', pathname);
-                    loginUrl.searchParams.set('error', 'session_expired');
-                    return NextResponse.redirect(loginUrl);
-                }
-
-                // Check role
-                const { data: profile } = await supabase
-                    .from('profiles')
-                    .select('role')
-                    .eq('id', user.id)
-                    .single();
-
-                if (!profile || (profile.role !== 'admin' && profile.role !== 'staff')) {
-                    const loginUrl = new URL('/admin/login', request.url);
-                    loginUrl.searchParams.set('error', 'unauthorized');
-                    return NextResponse.redirect(loginUrl);
-                }
-
-                // Auth passed — set user info in headers for downstream use
-                response.headers.set('x-user-id', user.id);
-                response.headers.set('x-user-role', profile.role);
-
-            } catch (err) {
-                console.error('[Middleware] Auth check error:', err);
-                // Fail closed — redirect to login on auth error
-                const loginUrl = new URL('/admin/login', request.url);
-                loginUrl.searchParams.set('redirect', pathname);
-                loginUrl.searchParams.set('error', 'auth_error');
-                return NextResponse.redirect(loginUrl);
-            }
+        const verified = await verifyStaffToken(token);
+        if (!verified) {
+            const loginUrl = new URL('/admin/login', request.url);
+            loginUrl.searchParams.set('redirect', pathname);
+            loginUrl.searchParams.set('error', 'session_expired');
+            return NextResponse.redirect(loginUrl);
         }
+        response.headers.set('x-user-id', verified.userId);
+        response.headers.set('x-user-role', verified.role);
     }
 
     // ============================================================

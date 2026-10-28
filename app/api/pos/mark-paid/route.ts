@@ -1,8 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+import { supabaseAdmin } from '@/lib/supabase-admin';
 
 async function verifyAdmin(request: NextRequest): Promise<boolean> {
   const token =
@@ -10,9 +7,7 @@ async function verifyAdmin(request: NextRequest): Promise<boolean> {
     request.headers.get('authorization')?.replace('Bearer ', '');
   if (!token) return false;
 
-  const supabase = createClient(supabaseUrl, supabaseServiceKey, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  });
+  const supabase = supabaseAdmin;
   const { data: { user }, error } = await supabase.auth.getUser(token);
   if (error || !user) return false;
 
@@ -38,9 +33,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'order_ref is required' }, { status: 400 });
     }
 
-    const supabase = createClient(supabaseUrl, supabaseServiceKey, {
-      auth: { autoRefreshToken: false, persistSession: false },
-    });
+    const supabase = supabaseAdmin;
 
     const { data, error } = await supabase.rpc('mark_order_paid', {
       order_ref,

@@ -631,3 +631,16 @@ ${emailButton('Reply to ' + safeName, `mailto:${safeEmail}?subject=Re: ${encodeU
         });
     }
 }
+
+export async function sendPasswordResetEmail(email: string, resetUrl: string) {
+    await sendEmail({
+        to: email,
+        subject: `Reset your ${BRAND.name} password`,
+        html: emailLayout(`
+<h2 style="margin:0 0 16px;color:#111827;font-size:22px;text-align:center;">Reset your password</h2>
+<p style="color:#374151;font-size:14px;line-height:1.7;margin:0 0 16px;">We received a request to reset the password for your account. The link below works once and expires in 1 hour.</p>
+${emailButton('Choose a new password', resetUrl)}
+<p style="color:#9ca3af;font-size:12px;line-height:1.6;margin:16px 0 0;">If you didn't ask for this, you can ignore this email. Your password won't change.</p>
+`, 'Reset your password'),
+    });
+}

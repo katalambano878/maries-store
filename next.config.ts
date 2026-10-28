@@ -8,6 +8,23 @@ const nextConfig: NextConfig = {
     deviceSizes: [640, 750, 828, 1080, 1200, 1920, 2048, 3840],
     imageSizes: [16, 32, 48, 64, 96, 128, 256],
     remotePatterns: [
+      // Product and category images are served by this app's own storage
+      // route (app/storage/v1), on the live domain and the staging host.
+      {
+        protocol: 'https',
+        hostname: 'shopmarieshair.com',
+        pathname: '/storage/v1/object/public/**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'www.shopmarieshair.com',
+        pathname: '/storage/v1/object/public/**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'marieshair.169-58-8-203.sslip.io',
+        pathname: '/storage/v1/object/public/**',
+      },
       {
         protocol: 'https',
         hostname: '*.supabase.co',

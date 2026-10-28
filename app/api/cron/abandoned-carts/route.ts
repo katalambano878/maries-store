@@ -1,9 +1,6 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { supabaseAdmin } from '@/lib/supabase-admin';
 import { sendSMS } from '@/lib/notifications';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
 const BRAND_URL = ((/^https?:\/\//.test(process.env.NEXT_PUBLIC_APP_URL || '')
   ? process.env.NEXT_PUBLIC_APP_URL!
@@ -18,7 +15,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const supabase = supabaseAdmin;
 
     // Find abandoned carts that:
     // 1. Were created more than 1 hour ago (give time to complete on their own)

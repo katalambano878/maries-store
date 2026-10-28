@@ -1,25 +1,12 @@
-import { createClient } from '@supabase/supabase-js';
+import type { SupabaseClient } from '@supabase/supabase-js';
+import { createClient } from './db/supabase-compat';
 
 /**
- * Server-side Supabase client with service role key.
+ * Server-side service-role client: runs as the database owner on plain
+ * Postgres and bypasses row-level security.
  * ONLY use this in API routes and server actions — NEVER in client components.
- * This bypasses RLS, so always verify the caller is authorized first.
+ * Always verify the caller is authorized first.
  */
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-if (!supabaseUrl) {
-    throw new Error('Missing NEXT_PUBLIC_SUPABASE_URL');
-}
-
-if (!supabaseServiceKey) {
-    console.error('CRITICAL: Missing SUPABASE_SERVICE_ROLE_KEY — admin operations will fail');
-}
-
-export const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey || '', {
-    auth: {
-        autoRefreshToken: false,
-        persistSession: false,
-    },
-});
+// Typed as supabase-js so call sites keep their inferred row types; the
+// compat client implements the part of that API this app uses.
+export const supabaseAdmin = createClient() as unknown as SupabaseClient;

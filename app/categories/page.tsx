@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { supabase } from '@/lib/supabase';
+import { supabaseAnon as supabase } from '@/lib/supabase-server';
 import PageHero from '@/components/PageHero';
 
 export const revalidate = 0; // Ensure fresh data on every visit
