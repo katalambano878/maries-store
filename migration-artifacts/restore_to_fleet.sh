@@ -122,6 +122,7 @@ SQL
 echo "== security hardening"
 docker exec -i fleet-postgres psql -U postgres -d "$DB" -v ON_ERROR_STOP=1 -X -q -c "SET ROLE $OWNER" -f - < /root/maries-migration/02_security_hardening.sql
 docker exec -i fleet-postgres psql -U postgres -d "$DB" -v ON_ERROR_STOP=1 -X -q -c "SET ROLE $OWNER" -f - < /root/maries-migration/03_close_guest_order_reads.sql
+docker exec -i fleet-postgres psql -U postgres -d "$DB" -v ON_ERROR_STOP=1 -X -q -c "SET ROLE $OWNER" -f - < /root/maries-migration/04_abandoned_carts_server_only.sql
 
 echo "== safety checks"
 PSQL -d "$DB" -At <<SQL

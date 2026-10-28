@@ -127,49 +127,27 @@ export default function CheckoutPage() {
           price: item.price,
         }));
 
-        const { data: existingCart } = abandonedCartId
-          ? { data: { id: abandonedCartId } }
-          : await supabase
-              .from('abandoned_carts')
-              .select('id')
-              .eq('phone', shippingData.phone)
-              .eq('recovered', false)
-              .order('created_at', { ascending: false })
-              .limit(1)
-              .maybeSingle();
-
-        if (existingCart?.id) {
-          await supabase
-            .from('abandoned_carts')
-            .update({
-              email: shippingData.email || null,
-              first_name: shippingData.firstName,
-              last_name: shippingData.lastName,
-              cart_items: cartPayload,
-              cart_total: subtotal,
-              shipping_address: shippingData,
-              user_id: user?.id || null,
-              updated_at: new Date().toISOString(),
-            })
-            .eq('id', existingCart.id);
-          setAbandonedCartId(existingCart.id);
-        } else {
-          const { data: newCart } = await supabase
-            .from('abandoned_carts')
-            .insert({
-              email: shippingData.email || null,
-              phone: shippingData.phone,
-              first_name: shippingData.firstName,
-              last_name: shippingData.lastName,
-              cart_items: cartPayload,
-              cart_total: subtotal,
-              shipping_address: shippingData,
-              user_id: user?.id || null,
-            })
-            .select('id')
-            .single();
-          if (newCart) setAbandonedCartId(newCart.id);
-        }
+        const { data: sessionData } = await supabase.auth.getSession();
+        const token = sessionData.session?.access_token;
+        const res = await fetch('/api/abandoned-cart', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({
+            cartId: abandonedCartId,
+            phone: shippingData.phone,
+            email: shippingData.email || null,
+            firstName: shippingData.firstName,
+            lastName: shippingData.lastName,
+            items: cartPayload,
+            total: subtotal,
+            shippingAddress: shippingData,
+          }),
+        });
+        const saved = await res.json().catch(() => null);
+        if (saved?.id) setAbandonedCartId(saved.id);
       } catch (e) {
         // Non-blocking: don't interrupt checkout
       }
@@ -323,11 +301,11 @@ export default function CheckoutPage() {
 
       // Mark abandoned cart as recovered since order was placed
       if (abandonedCartId) {
-        supabase
-          .from('abandoned_carts')
-          .update({ recovered: true, recovered_at: new Date().toISOString() })
-          .eq('id', abandonedCartId)
-          .then(() => {});
+        fetch('/api/abandoned-cart', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ cartId: abandonedCartId, orderNumber }),
+        }).catch(() => {});
       }
 
       const orderItems = orderItemsPayload.map((row) => ({
