@@ -16,6 +16,32 @@ export default function CustomerDetailsPage() {
 
     const fetchCustomerData = useCallback(async () => {
         try {
+            // Guest shoppers have no profile; the customer list links them as
+            // `guest-<n>-<email>`, so show them from their orders instead.
+            const guestMatch = /^guest-\d+-(.+)$/.exec(decodeURIComponent(customerId));
+            if (guestMatch) {
+                const email = guestMatch[1];
+                const { data: guestOrders, error: guestError } = await supabase
+                    .from('orders')
+                    .select('*')
+                    .eq('email', email)
+                    .order('created_at', { ascending: false });
+                if (guestError) throw guestError;
+                const latest = guestOrders?.[0];
+                if (latest) {
+                    const first = latest.metadata?.first_name || latest.shipping_address?.firstName || '';
+                    const last = latest.metadata?.last_name || latest.shipping_address?.lastName || '';
+                    setCustomer({
+                        email,
+                        full_name: `${first} ${last}`.trim() || 'Guest',
+                        phone: latest.phone || latest.shipping_address?.phone || null,
+                        created_at: guestOrders[guestOrders.length - 1].created_at,
+                    });
+                    setOrders(guestOrders);
+                }
+                return;
+            }
+
             // 1. Fetch Profile
             const { data: profile, error: profileError } = await supabase
                 .from('profiles')
