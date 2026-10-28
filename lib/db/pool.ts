@@ -49,6 +49,9 @@ export function getPool(): Pool {
         ? { rejectUnauthorized: false }
         : undefined,
   });
+  // An idle connection the server drops (restart, maintenance) must not take
+  // the process down; the pool replaces it on the next query.
+  _pool.on("error", (e) => console.error("[db] idle connection error:", e.message));
   // Server code acts as Supabase's service role. Database functions that
   // check `auth.role() = 'service_role'` (e.g. upsert_customer_from_order)
   // keep working; `withRequestRole` overrides these per transaction.
