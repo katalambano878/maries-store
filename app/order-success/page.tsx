@@ -10,7 +10,7 @@ import {
   PRIMARY_PAYMENT_GATEWAY,
   resolveOrderPaymentGateway,
 } from '@/lib/payment-gateway';
-import { supabase } from '@/lib/supabase';
+import { fetchOrder as loadOrder } from '@/lib/fetch-order';
 
 function OrderSuccessContent() {
   const searchParams = useSearchParams();
@@ -33,16 +33,8 @@ function OrderSuccessContent() {
       }
 
       try {
-        const { data: orderData, error } = await supabase
-          .from('orders')
-          .select(`
-                    *,
-                    order_items (*)
-                `)
-          .eq('order_number', orderNumber)
-          .single();
-
-        if (error) throw error;
+        const orderData = await loadOrder(orderNumber);
+        if (!orderData) throw new Error('Order not found');
         setOrder(orderData);
 
         const meta = orderData?.metadata || {};
@@ -91,11 +83,7 @@ function OrderSuccessContent() {
         await new Promise((resolve) => setTimeout(resolve, 2800));
       }
 
-      const { data: refreshed } = await supabase
-        .from('orders')
-        .select('*, order_items (*)')
-        .eq('order_number', orderNum)
-        .single();
+      const refreshed = await loadOrder(orderNum);
 
       if (refreshed?.payment_status === 'paid') {
         setOrder(refreshed);
@@ -133,11 +121,7 @@ function OrderSuccessContent() {
         }
 
         if (result.success && result.payment_status === 'paid') {
-          const { data: updated } = await supabase
-            .from('orders')
-            .select('*, order_items (*)')
-            .eq('order_number', orderNum)
-            .single();
+          const updated = await loadOrder(orderNum);
           if (updated) setOrder(updated);
           setVerifying(false);
           return;

@@ -283,11 +283,15 @@ export default function CheckoutPage() {
       const checkoutSubtotal = computedSubtotal;
       const checkoutTotal = checkoutSubtotal + shippingCost + tax;
 
-      // 1. Create Order (totals from DB-resolved prices)
-      const { data: order, error: orderError } = await supabase
+      // 1. Create Order (totals from DB-resolved prices). The id is made here
+      // so the row never has to be read back: shoppers can create orders but
+      // can't read guest orders through the data API.
+      const orderId = crypto.randomUUID();
+      const { error: orderError } = await supabase
         .from('orders')
         .insert([
           {
+            id: orderId,
             order_number: orderNumber,
             user_id: user?.id || null,
             email: customerEmail,
@@ -313,9 +317,7 @@ export default function CheckoutPage() {
               payment_gateway: 'hubtel',
             },
           },
-        ])
-        .select()
-        .single();
+        ]);
 
       if (orderError) throw orderError;
 
@@ -330,7 +332,7 @@ export default function CheckoutPage() {
 
       const orderItems = orderItemsPayload.map((row) => ({
         ...row,
-        order_id: order.id,
+        order_id: orderId,
       }));
 
       const { error: itemsError } = await supabase

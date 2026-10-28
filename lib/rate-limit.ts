@@ -142,6 +142,12 @@ export const RATE_LIMITS = {
     windowSeconds: 60 // 10 attempts per minute
   },
 
+  // Order lookups from the success, pay and tracking pages
+  orderLookup: {
+    maxRequests: 30,
+    windowSeconds: 60 // 30 lookups per minute
+  },
+
   // General API - default limits
   default: {
     maxRequests: 100,

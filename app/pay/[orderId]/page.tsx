@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { supabase } from '@/lib/supabase';
+import { fetchOrder as loadOrder } from '@/lib/fetch-order';
 import { usePageTitle } from '@/hooks/usePageTitle';
 
 export default function PaymentPage() {
@@ -22,13 +22,9 @@ export default function PaymentPage() {
   useEffect(() => {
     async function fetchOrder() {
       try {
-        const { data, error: fetchError } = await supabase
-          .from('orders')
-          .select('*')
-          .or(`id.eq.${orderId},order_number.eq.${orderId}`)
-          .single();
+        const data = await loadOrder(orderId);
 
-        if (fetchError || !data) {
+        if (!data) {
           setError('Order not found. Please check your link and try again.');
           setLoading(false);
           return;

@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useState, useEffect, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { supabase } from '@/lib/supabase';
+import { fetchOrder as loadOrder } from '@/lib/fetch-order';
 
 function OrderTrackingContent() {
   const searchParams = useSearchParams();
@@ -21,8 +21,6 @@ function OrderTrackingContent() {
   const urlEmail = searchParams.get('email') || '';
   const urlPhone = searchParams.get('phone') || '';
 
-  const normalizePhone = (raw: string) => raw.replace(/\D/g, '').replace(/^233/, '').replace(/^0/, '');
-
   const fetchOrder = useCallback(async (orderNum: string, verifyEmail?: string, verifyPhone?: string) => {
     const emailToVerify = (verifyEmail || email).trim();
     const phoneToVerify = (verifyPhone || phone).trim();
@@ -37,52 +35,17 @@ function OrderTrackingContent() {
     setError('');
 
     try {
-      // Only select the fields we need — avoid exposing unnecessary data
-      const { data, error: fetchError } = await supabase
-        .from('orders')
-        .select(`
-          id,
-          order_number,
-          status,
-          payment_status,
-          total,
-          email,
-          phone,
-          created_at,
-          shipping_address,
-          metadata,
-          order_items (
-            id,
-            product_name,
-            variant_name,
-            quantity,
-            unit_price,
-            metadata,
-            products (
-              product_images (url)
-            )
-          )
-        `)
-        .eq('order_number', orderNum)
-        .single();
+      // The server checks the email/phone against the order before it
+      // returns anything, so a wrong guess learns nothing.
+      const data = await loadOrder(orderNum, {
+        email: emailToVerify,
+        phone: phoneToVerify,
+        tracking: true,
+      });
 
-      if (fetchError || !data) {
-        setError('Order not found. Please check your order number and try again.');
-        setIsTracking(false);
-        return;
-      }
-
-      const emailOk =
-        !!emailToVerify &&
-        data.email?.toLowerCase() === emailToVerify.toLowerCase();
-      const phoneOk =
-        !!phoneToVerify &&
-        normalizePhone(data.phone || data.shipping_address?.phone || '') ===
-          normalizePhone(phoneToVerify);
-
-      if (!emailOk && !phoneOk) {
+      if (!data) {
         setError(
-          'The email or phone number does not match this order. Please use the details you entered at checkout.'
+          'We could not find an order with that number and email or phone. Please use the details you entered at checkout.'
         );
         setIsTracking(false);
         return;
