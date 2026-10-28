@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import Image from 'next/image';
+import { localImage } from '@/lib/image-src';
 
 interface LazyImageProps {
   src: string;
@@ -53,7 +54,7 @@ export default function LazyImage({
         <div className="absolute inset-0 bg-gray-200 animate-pulse z-10"></div>
       )}
       <Image
-        src={src}
+        src={localImage(src)}
         alt={alt}
         fill
         sizes={sizes}

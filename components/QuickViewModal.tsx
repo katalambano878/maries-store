@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
+import { localImage } from '@/lib/image-src';
 
 interface Product {
   id: string;
@@ -67,7 +68,7 @@ export default function QuickViewModal({ product, isOpen, onClose }: QuickViewMo
               <div>
                 <div className="relative aspect-square bg-gray-100 rounded-lg overflow-hidden mb-4">
                   <Image
-                    src={images[selectedImage]}
+                    src={localImage(images[selectedImage])}
                     alt={product.name}
                     fill
                     className="object-cover object-top"
@@ -86,7 +87,7 @@ export default function QuickViewModal({ product, isOpen, onClose }: QuickViewMo
                           selectedImage === index ? 'border-stone-700' : 'border-transparent hover:border-gray-300'
                         }`}
                       >
-                        <Image src={image} alt="" fill className="object-cover object-top" sizes="12vw" quality={50} loading="lazy" />
+                        <Image src={localImage(image)} alt="" fill className="object-cover object-top" sizes="12vw" quality={50} loading="lazy" />
                       </button>
                     ))}
                   </div>

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
+import { localImage } from '@/lib/image-src';
 import { supabase } from '@/lib/supabase';
 import ProductCard, { type ColorVariant, getColorHex } from '@/components/ProductCard';
 import ProductCardSkeleton from '@/components/skeletons/ProductCardSkeleton';
@@ -198,7 +199,7 @@ export default function Home() {
               style={slide.bgColor ? { backgroundColor: slide.bgColor } : undefined}
             >
               <Image
-                src={slide.image}
+                src={localImage(slide.image)}
                 alt={`Hero Banner ${index + 1}`}
                 fill
                 className={`${slide.hideOverlay ? 'object-contain' : `object-cover ${slide.position}`}`}
@@ -338,7 +339,7 @@ export default function Home() {
               <Link href={`/shop?category=${category.slug}`} key={category.id} className="group cursor-pointer block relative">
                 <div className="aspect-[3/4] rounded-2xl overflow-hidden relative shadow-sm group-hover:shadow-[0_20px_40px_-15px_rgba(0,0,0,0.3)] transition-all duration-[800ms] ease-[cubic-bezier(0.25,0.1,0.25,1)] group-hover:-translate-y-2">
                   <Image
-                    src={category.image || category.image_url || 'https://via.placeholder.com/600x800?text=' + encodeURIComponent(category.name)}
+                    src={localImage(category.image || category.image_url || 'https://via.placeholder.com/600x800?text=' + encodeURIComponent(category.name))}
                     alt={category.name}
                     fill
                     className="object-cover transition-transform duration-[1200ms] ease-[cubic-bezier(0.25,0.1,0.25,1)] group-hover:scale-110"

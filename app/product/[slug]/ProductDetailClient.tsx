@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import Image from 'next/image';
+import { localImage } from '@/lib/image-src';
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { cachedQuery } from '@/lib/query-cache';
@@ -340,7 +341,7 @@ export default function ProductDetailClient({ slug }: { slug: string }) {
               <div>
                 <div className="relative aspect-square rounded-2xl overflow-hidden bg-gray-100 mb-4 shadow-lg border border-gray-100">
                   <Image
-                    src={product.images[selectedImage]}
+                    src={localImage(product.images[selectedImage])}
                     alt={product.name}
                     fill
                     className="object-cover object-center"
@@ -365,7 +366,7 @@ export default function ProductDetailClient({ slug }: { slug: string }) {
                           }`}
                       >
                         <Image
-                          src={image}
+                          src={localImage(image)}
                           alt={`${product.name} view ${index + 1}`}
                           fill
                           className="object-cover object-center"
