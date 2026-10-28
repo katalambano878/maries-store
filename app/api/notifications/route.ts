@@ -37,7 +37,7 @@ export async function POST(request: Request) {
         // 'order_created' requires a valid order to exist (verified below)
         // 'contact' is public but rate-limited
         // ============================================================
-        const adminOnlyTypes = ['campaign', 'order_updated', 'order_status', 'payment_link', 'welcome'];
+        const adminOnlyTypes = ['campaign', 'order_updated', 'order_status', 'payment_link'];
         const requiresAdminAuth = adminOnlyTypes.includes(type);
 
         if (requiresAdminAuth) {
@@ -45,6 +45,18 @@ export async function POST(request: Request) {
             if (!auth.authenticated) {
                 return NextResponse.json({ error: auth.error || 'Unauthorized' }, { status: 401 });
             }
+        }
+
+        // 'welcome' is sent by the sign-up page right after the account is
+        // created: the new customer may only welcome themselves.
+        if (type === 'welcome') {
+            const auth = await verifyAuth(request);
+            if (!auth.authenticated || !auth.user?.email) {
+                return NextResponse.json({ error: auth.error || 'Unauthorized' }, { status: 401 });
+            }
+            payload.email = auth.user.email;
+            payload.firstName = escapeHtml(String(payload.firstName || '').slice(0, 60));
+            payload.phone = undefined;
         }
 
         // ============================================================

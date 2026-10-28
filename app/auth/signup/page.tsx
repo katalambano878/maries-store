@@ -118,7 +118,10 @@ export default function SignupPage() {
         // Send Welcome Notification
         fetch('/api/notifications', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            ...(data.session ? { Authorization: `Bearer ${data.session.access_token}` } : {}),
+          },
           body: JSON.stringify({
             type: 'welcome',
             payload: {
