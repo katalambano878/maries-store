@@ -102,7 +102,10 @@ export default function Footer() {
           </div>
 
           <div className="border-t border-stone-900/50 mt-12 pt-8 flex flex-col md:flex-row justify-between items-center gap-4 text-xs text-stone-500/40">
-            <p>&copy; {new Date().getFullYear()} {siteName}. All rights reserved.</p>
+            <p>
+              &copy; {new Date().getFullYear()} {siteName}. All rights reserved.
+              {' '}&middot;{' '}Powered by <a href="https://doctorbarns.com" target="_blank" rel="noopener" className="text-stone-500/40 hover:underline">Doctor Barns Tech</a>
+            </p>
             <div className="flex gap-4 opacity-40">
               <i className="ri-visa-line text-2xl"></i>
               <i className="ri-mastercard-line text-2xl"></i>
