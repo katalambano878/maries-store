@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
+import { prepareOrderForPayment } from '@/lib/payment-order-prep';
 import { checkRateLimit, getClientIdentifier, RATE_LIMITS } from '@/lib/rate-limit';
 
 export async function POST(req: Request) {
@@ -41,7 +42,12 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: false, message: 'Order is already paid' }, { status: 400 });
     }
 
-    const amount = Math.round(Number(order.total) * 100); // pesewas
+    // Re-price from the database (the browser writes the order row) and use that total.
+    const prep = await prepareOrderForPayment(String(order.id));
+    if ('error' in prep) {
+      return NextResponse.json({ success: false, message: prep.error }, { status: prep.status });
+    }
+    const amount = Math.round(Number(prep.order.total) * 100); // pesewas
     if (!amount || amount <= 0) {
       return NextResponse.json({ success: false, message: 'Invalid order amount' }, { status: 400 });
     }

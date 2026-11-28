@@ -222,12 +222,18 @@ export async function prepareOrderForPayment(orderId: string): Promise<PreparedO
       .eq('id', upd.id);
   }
 
-  const taxTotal = Number(order.tax_total || 0);
-  const shippingTotal = Number(order.shipping_total || 0);
-  const discountTotal = Number(order.discount_total || 0);
+  // The browser writes the order row, so only trust what the server can check:
+  // the store charges no tax and has no coupons, and shipping is never negative.
+  const taxTotal = 0;
+  const shippingTotal = Math.max(0, Number(order.shipping_total || 0));
+  const discountTotal = 0;
   const computedTotal = computedSubtotal + taxTotal + shippingTotal - discountTotal;
   const storedTotal = Number(order.total || 0);
-  const repriced = Math.abs(storedTotal - computedTotal) > 0.01 || removedItems.length > 0;
+  const adjustmentsChanged =
+    Number(order.tax_total || 0) !== taxTotal ||
+    Number(order.shipping_total || 0) !== shippingTotal ||
+    Number(order.discount_total || 0) !== discountTotal;
+  const repriced = Math.abs(storedTotal - computedTotal) > 0.01 || removedItems.length > 0 || adjustmentsChanged;
 
   const existingMeta =
     order.metadata && typeof order.metadata === 'object' && !Array.isArray(order.metadata)
@@ -248,6 +254,9 @@ export async function prepareOrderForPayment(orderId: string): Promise<PreparedO
       .from('orders')
       .update({
         subtotal: computedSubtotal,
+        tax_total: taxTotal,
+        shipping_total: shippingTotal,
+        discount_total: discountTotal,
         total: computedTotal,
         metadata: metaUpdates,
       })

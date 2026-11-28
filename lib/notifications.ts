@@ -531,8 +531,9 @@ ${emailButton('Pay Now — GH₵' + Number(total).toFixed(2), paymentUrl, '#d977
     }
 }
 
-export async function sendContactMessage(data: { name: string, email: string, subject: string, message: string }) {
+export async function sendContactMessage(data: { name: string, email: string, subject: string, message: string, phone?: string }) {
     const { name, email, subject, message } = data;
+    const safePhone = data.phone ? escapeHtml(String(data.phone).slice(0, 30)) : '';
 
     // SECURITY: Sanitize all user input before injecting into HTML
     const safeName = escapeHtml(name);
@@ -574,6 +575,7 @@ export async function sendContactMessage(data: { name: string, email: string, su
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f9fafb;border-radius:12px;overflow:hidden;margin:16px 0;">
   ${emailInfoRow('From', safeName)}
   ${emailInfoRow('Email', `<a href="mailto:${safeEmail}" style="color:${BRAND.color};">${safeEmail}</a>`)}
+  ${safePhone ? emailInfoRow('Phone', safePhone) : ''}
   ${emailInfoRow('Subject', safeSubject)}
 </table>
 
@@ -599,4 +601,54 @@ ${emailButton('Choose a new password', resetUrl)}
 <p style="color:#9ca3af;font-size:12px;line-height:1.6;margin:16px 0 0;">If you didn't ask for this, you can ignore this email. Your password won't change.</p>
 `, 'Reset your password'),
     });
+}
+
+export async function sendReturnRequestEmails(data: {
+    orderNumber: string;
+    customerName: string;
+    email?: string | null;
+    phone?: string | null;
+    type: 'refund' | 'exchange';
+    items: { name: string; quantity: number; reason: string }[];
+    details?: string;
+}) {
+    const safeName = escapeHtml(data.customerName || 'Customer');
+    const safeOrder = escapeHtml(data.orderNumber);
+    const safeDetails = data.details ? escapeHtml(data.details) : '';
+    const itemsHtml = data.items
+        .map(i => `<li style="margin:0 0 6px;">${escapeHtml(i.name)} &times; ${i.quantity} &mdash; ${escapeHtml(i.reason)}</li>`)
+        .join('');
+    const typeLabel = data.type === 'exchange' ? 'Exchange' : 'Refund';
+
+    if (ADMIN_EMAIL) {
+        await sendEmail({
+            to: ADMIN_EMAIL,
+            subject: `Return request: ${data.orderNumber}`,
+            html: emailLayout(`
+<h2 style="margin:0 0 16px;color:#111827;font-size:20px;">New return request</h2>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f9fafb;border-radius:12px;overflow:hidden;margin:16px 0;">
+  ${emailInfoRow('Order', safeOrder)}
+  ${emailInfoRow('Customer', safeName)}
+  ${data.phone ? emailInfoRow('Phone', escapeHtml(data.phone)) : ''}
+  ${isDeliverableEmail(data.email || '') ? emailInfoRow('Email', escapeHtml(String(data.email))) : ''}
+  ${emailInfoRow('Wants', typeLabel)}
+</table>
+<ul style="color:#374151;font-size:14px;line-height:1.6;padding-left:20px;">${itemsHtml}</ul>
+${safeDetails ? `<p style="color:#374151;font-size:14px;line-height:1.6;">${safeDetails}</p>` : ''}
+${emailButton('Open orders', `${BRAND.url}/admin/orders`)}
+`, `Return request for ${safeOrder}`)
+        });
+    }
+
+    if (isDeliverableEmail(data.email || '')) {
+        await sendEmail({
+            to: String(data.email),
+            subject: `We received your return request for ${data.orderNumber}`,
+            html: emailLayout(`
+<h2 style="margin:0 0 16px;color:#111827;font-size:22px;">Return request received</h2>
+<p style="color:#374151;font-size:14px;line-height:1.7;margin:0 0 16px;">Hi ${safeName}, we've received your ${typeLabel.toLowerCase()} request for order <strong>${safeOrder}</strong>. We'll contact you to arrange the next step.</p>
+<ul style="color:#374151;font-size:14px;line-height:1.6;padding-left:20px;">${itemsHtml}</ul>
+`, 'Return request received')
+        });
+    }
 }

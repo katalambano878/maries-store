@@ -3,70 +3,24 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { localImage } from '@/lib/image-src';
-import { useState } from 'react';
-import CartCountdown from '@/components/CartCountdown';
-import AdvancedCouponSystem from '@/components/AdvancedCouponSystem';
 import { useCart } from '@/context/CartContext';
 import PageHero from '@/components/PageHero';
 import { usePageTitle } from '@/hooks/usePageTitle';
 
 export default function CartPage() {
   usePageTitle('Shopping Cart');
-  const { cart: cartItems, removeFromCart, updateQuantity, subtotal, addToCart } = useCart();
-  const [appliedCoupon, setAppliedCoupon] = useState<any>(null);
-  const [savedItems, setSavedItems] = useState<any[]>([]);
+  const { cart: cartItems, removeFromCart, updateQuantity, subtotal } = useCart();
 
-  // Function to move item to saved for later (local state only for now)
-  const saveForLater = (id: string) => {
-    const item = cartItems.find(item => item.id === id);
-    if (item) {
-      setSavedItems([...savedItems, item]);
-      removeFromCart(item.id, item.variant); // Use context's removeFromCart
-    }
-  };
-
-  const moveToCart = (id: string) => {
-    const item = savedItems.find(item => item.id === id);
-    if (item) {
-      // addToCart expects a CartItem object which already includes quantity
-      addToCart(item);
-      setSavedItems(savedItems.filter(item => item.id !== id));
-    }
-  };
-
-  const applyCoupon = (coupon: any) => {
-    setAppliedCoupon(coupon);
-  };
-
-  const removeCoupon = () => {
-    setAppliedCoupon(null);
-  };
-
-  // Savings calculation is tricky without originalPrice in Context.
-  // Assuming 0 for now unless we update Context.
-  const savings = 0;
-
-  let couponDiscount = 0;
-  if (appliedCoupon) {
-    if (appliedCoupon.type === 'percentage') {
-      couponDiscount = subtotal * (appliedCoupon.discount / 100);
-    } else {
-      couponDiscount = appliedCoupon.discount;
-    }
-  }
-
-  const shipping = subtotal >= 200 ? 0 : 15;
-  const total = subtotal - couponDiscount + shipping;
+  // Delivery is chosen at checkout (free store pickup, or delivery priced by the shop).
+  const total = subtotal;
 
   return (
     <div className="min-h-screen bg-gray-50">
       <PageHero title="Shopping Cart" backgroundImage="/hero_cart_1772075284757.png" />
       <div className="py-12 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
 
-        <CartCountdown />
-        {/* <FreeShippingBar currentAmount={subtotal} threshold={200} /> */}
 
-        {cartItems.length === 0 && savedItems.length === 0 ? (
+        {cartItems.length === 0 ? (
           <section className="py-20">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 text-center">
               <div className="w-24 h-24 flex items-center justify-center mx-auto mb-6 bg-gray-200 rounded-full">
@@ -87,9 +41,6 @@ export default function CartPage() {
                   <div className="bg-white rounded-xl shadow-sm p-6 overflow-hidden">
                     <div className="flex items-center justify-between mb-6">
                       <h2 className="text-2xl font-bold text-gray-900">Cart Items ({cartItems.length})</h2>
-                      {savings > 0 && (
-                        <span className="text-stone-700 font-semibold">You save GH₵{savings.toFixed(2)}</span>
-                      )}
                     </div>
 
                     <div className="space-y-6">
@@ -166,40 +117,12 @@ export default function CartPage() {
                               </div>
                             </div>
 
-                            {/* Saved for later functionality temporarily disabled until fully implemented with Context integration if requested */}
-                            {/*
-                            <button
-                              onClick={() => saveForLater(item.id)}
-                              className="mt-3 text-sm text-stone-700 hover:text-stone-900 font-medium whitespace-nowrap"
-                            >
-                              Save for Later
-                            </button>
-                            */}
                           </div>
                         </div>
                       ))}
                     </div>
                   </div>
 
-                  {savedItems.length > 0 && (
-                    <div className="bg-white rounded-xl shadow-sm p-6">
-                      <h3 className="text-xl font-bold text-gray-900 mb-4">Saved for Later ({savedItems.length})</h3>
-                      <div className="space-y-4">
-                        {savedItems.map((item) => (
-                          <div key={item.id} className="flex gap-4 pb-4 border-b border-gray-200 last:border-0 last:pb-0">
-                            <div className="relative w-20 h-20 flex-shrink-0 bg-gray-100 rounded-lg overflow-hidden">
-                              <Image src={localImage(item.image)} alt={item.name} fill className="object-cover object-top" sizes="80px" quality={60} />
-                            </div>
-                            <div className="flex-1">
-                              <p className="font-semibold text-gray-900 mb-1">{item.name}</p>
-                              <p className="text-lg font-bold text-gray-900 mb-2">GH₵{item.price.toFixed(2)}</p>
-                              {/* Move to cart disabled for now */}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
                 </div>
 
                 <div className="space-y-6">
@@ -212,25 +135,10 @@ export default function CartPage() {
                         <span className="font-semibold">GH₵{subtotal.toFixed(2)}</span>
                       </div>
 
-                      {appliedCoupon && (
-                        <div className="flex justify-between text-stone-700">
-                          <div className="flex items-center space-x-2">
-                            <span>Coupon ({appliedCoupon.code})</span>
-                          </div>
-                          <span className="font-semibold">-GH₵{couponDiscount.toFixed(2)}</span>
-                        </div>
-                      )}
-
                       <div className="flex justify-between text-gray-700">
-                        <span>Shipping</span>
-                        <span className="font-semibold">{shipping === 0 ? 'FREE' : `GH₵${shipping.toFixed(2)}`}</span>
+                        <span>Delivery</span>
+                        <span className="text-sm text-gray-500">Chosen at checkout</span>
                       </div>
-
-                      {shipping > 0 && (
-                        <p className="text-sm text-amber-600">
-                          {/* Shipping threshold text removed */}
-                        </p>
-                      )}
                     </div>
 
                     <div className="border-t border-gray-200 pt-4 mb-6">
@@ -240,12 +148,6 @@ export default function CartPage() {
                       </div>
                     </div>
 
-                    <AdvancedCouponSystem
-                      subtotal={subtotal}
-                      onApply={applyCoupon}
-                      onRemove={removeCoupon}
-                      appliedCoupon={appliedCoupon}
-                    />
 
                     <Link
                       href="/checkout"
@@ -271,8 +173,8 @@ export default function CartPage() {
                         <span>30-day returns</span>
                       </div>
                       <div className="flex items-center text-sm text-gray-600">
-                        <i className="ri-customer-service-line text-stone-700 mr-2"></i>
-                        <span>24/7 support</span>
+                        <i className="ri-whatsapp-line text-stone-700 mr-2"></i>
+                        <span>Help on WhatsApp</span>
                       </div>
                     </div>
                   </div>

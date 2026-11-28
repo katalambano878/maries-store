@@ -3,8 +3,6 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import Header from '@/components/Header';
-import Footer from '@/components/Footer';
 import { sanitizeHtml } from '@/lib/sanitize';
 
 const articles: any = {
@@ -50,7 +48,7 @@ const articles: any = {
       </ul>
       
       <h2>Need More Help?</h2>
-      <p>If you can't find your tracking information or have questions about your delivery, please <a href="/support/ticket">contact our support team</a>.</p>
+      <p>If you can't find your tracking information or have questions about your delivery, please <a href="/contact">contact our support team</a>.</p>
     `
   },
   '6': {
@@ -117,7 +115,6 @@ export default function ArticlePage() {
 
   return (
     <>
-      <Header />
       <main className="min-h-screen bg-gray-50 py-12">
         <div className="max-w-4xl mx-auto px-4">
           <Link
@@ -205,7 +202,7 @@ export default function ArticlePage() {
                       Our support team is here for you!
                     </p>
                     <Link
-                      href="/support/ticket"
+                      href="/contact"
                       className="inline-block bg-blue-700 hover:bg-blue-800 text-white px-6 py-3 rounded-lg font-semibold transition-colors whitespace-nowrap"
                     >
                       Contact Support
@@ -239,7 +236,6 @@ export default function ArticlePage() {
           </div>
         </div>
       </main>
-      <Footer />
     </>
   );
 }

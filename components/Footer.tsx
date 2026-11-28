@@ -53,14 +53,11 @@ export default function Footer() {
               </p>
 
               <div className="flex flex-wrap gap-6 pt-4">
-                <a href="#" aria-label="Instagram" className="text-stone-500 hover:text-white transition-transform hover:scale-110">
-                  <i className="ri-instagram-line text-2xl"></i>
+                <a href="https://wa.me/233547742920" target="_blank" rel="noopener noreferrer" aria-label="WhatsApp" className="text-stone-500 hover:text-white transition-transform hover:scale-110">
+                  <i className="ri-whatsapp-line text-2xl"></i>
                 </a>
-                <a href="#" aria-label="Twitter" className="text-stone-500 hover:text-white transition-transform hover:scale-110">
-                  <i className="ri-twitter-x-line text-2xl"></i>
-                </a>
-                <a href="#" aria-label="Facebook" className="text-stone-500 hover:text-white transition-transform hover:scale-110">
-                  <i className="ri-facebook-circle-line text-2xl"></i>
+                <a href="tel:+233547742920" aria-label="Call 0547742920" className="text-stone-500 hover:text-white transition-transform hover:scale-110">
+                  <i className="ri-phone-line text-2xl"></i>
                 </a>
               </div>
             </div>
