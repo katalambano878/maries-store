@@ -27,7 +27,7 @@ const categories = [
       { id: 7, title: 'What is your return policy?', views: 1876 },
       { id: 8, title: 'When will I get my refund?', views: 1432 },
       { id: 9, title: 'Can I exchange instead of return?', views: 987 },
-      { id: 10, title: 'How do I print a return label?', views: 765 }
+      { id: 10, title: 'How do I send an item back?', views: 765 }
     ]
   },
   {

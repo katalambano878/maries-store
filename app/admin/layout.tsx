@@ -22,6 +22,25 @@ export default function AdminLayout({
 
   // Module Filtering State
   const [enabledModules, setEnabledModules] = useState<string[]>([]);
+  const [newOrders, setNewOrders] = useState(0);
+
+  // Paid orders in the last 24 hours, for the bell.
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    let cancelled = false;
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    supabase
+      .from('orders')
+      .select('id', { count: 'exact', head: true })
+      .eq('payment_status', 'paid')
+      .gte('created_at', since)
+      .then(({ count }) => {
+        if (!cancelled) setNewOrders(count || 0);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, pathname]);
 
   useEffect(() => {
     async function checkAuth() {
@@ -226,12 +245,6 @@ export default function AdminLayout({
       roles: ['admin']
     },
     {
-      title: 'Coupons',
-      icon: 'ri-coupon-2-line',
-      path: '/admin/coupons',
-      roles: ['admin']
-    },
-    {
       title: 'Customer Insights',
       icon: 'ri-user-search-line',
       path: '/admin/customer-insights',
@@ -249,13 +262,6 @@ export default function AdminLayout({
       title: 'SMS Debugger',
       icon: 'ri-message-2-line',
       path: '/admin/test-sms',
-      roles: ['admin']
-    },
-    {
-      title: 'Blog',
-      icon: 'ri-article-line',
-      path: '/admin/blog',
-      moduleId: 'blog',
       roles: ['admin']
     },
     {
@@ -374,10 +380,18 @@ export default function AdminLayout({
             </div>
 
             <div className="flex items-center space-x-2 lg:space-x-4">
-              <button className="relative w-10 h-10 flex items-center justify-center text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors cursor-pointer">
+              <Link
+                href="/admin/orders"
+                title={newOrders ? `${newOrders} paid order${newOrders > 1 ? 's' : ''} in the last 24 hours` : 'No new paid orders in the last 24 hours'}
+                className="relative w-10 h-10 flex items-center justify-center text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+              >
                 <i className="ri-notification-3-line text-xl"></i>
-                <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
-              </button>
+                {newOrders > 0 && (
+                  <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[11px] font-bold rounded-full flex items-center justify-center">
+                    {newOrders > 99 ? '99+' : newOrders}
+                  </span>
+                )}
+              </Link>
 
               <div className="relative user-menu-container">
                 <button

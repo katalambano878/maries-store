@@ -30,6 +30,7 @@ export default function OrderDetailClient({ orderId }: OrderDetailClientProps) {
   const [trackingNumber, setTrackingNumber] = useState('');
   const [adminNotes, setAdminNotes] = useState('');
   const [statusUpdating, setStatusUpdating] = useState(false);
+  const [returnRequests, setReturnRequests] = useState<any[]>([]);
 
   const searchParams = useSearchParams();
   const autoPrint = searchParams.get('print') === 'true';
@@ -211,6 +212,13 @@ export default function OrderDetailClient({ orderId }: OrderDetailClientProps) {
       setOrder(data);
       setTrackingNumber(data.metadata?.tracking_number || '');
       setAdminNotes(data.notes || '');
+
+      const { data: returns } = await supabase
+        .from('return_requests')
+        .select('id, status, reason, description, created_at, return_items(order_item_id, quantity, reason)')
+        .eq('order_id', data.id)
+        .order('created_at', { ascending: false });
+      setReturnRequests(returns || []);
 
     } catch (err: any) {
       console.error('Error fetching order:', err);
@@ -469,6 +477,31 @@ export default function OrderDetailClient({ orderId }: OrderDetailClientProps) {
                 </div>
               </div>
             </div>
+
+            {returnRequests.length > 0 && (
+              <div className="bg-white rounded-xl shadow-sm border border-amber-200 p-6">
+                <h2 className="text-xl font-bold text-gray-900 mb-4">Return requests</h2>
+                <div className="space-y-4">
+                  {returnRequests.map((request) => (
+                    <div key={request.id} className="p-4 rounded-lg bg-amber-50">
+                      <p className="text-sm text-gray-600">
+                        {new Date(request.created_at).toLocaleString('en-GB')} · {request.description || 'Return'}
+                      </p>
+                      <ul className="mt-2 space-y-1 text-sm text-gray-900">
+                        {(request.return_items || []).map((ri: any) => {
+                          const item = order.order_items?.find((i: any) => i.id === ri.order_item_id);
+                          return (
+                            <li key={ri.order_item_id}>
+                              {item?.product_name || 'Item'} × {ri.quantity} — {ri.reason}
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
               <h2 className="text-xl font-bold text-gray-900 mb-6">Order Timeline</h2>

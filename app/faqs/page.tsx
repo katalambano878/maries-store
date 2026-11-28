@@ -60,7 +60,7 @@ export default function FAQsPage() {
     {
       category: 'returns',
       question: 'What is your return policy?',
-      answer: 'We offer a 14-day return policy for unused items in original packaging. Simply initiate a return from your account, print the return label, and ship it back. Refunds are processed within 5-7 business days after we receive the item.'
+      answer: 'We offer a 14-day return policy for unused items in original packaging. Start a return on our Returns page with your order number and the phone or email you used, and we will contact you to arrange it. Refunds are processed within 5-7 business days after we receive the item.'
     },
     {
       category: 'returns',

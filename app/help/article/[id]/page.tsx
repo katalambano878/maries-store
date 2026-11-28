@@ -71,7 +71,7 @@ const articles: any = {
       </ol>
       
       <h3>Step 2: Print Your Return Label</h3>
-      <p>After submitting your return request, you'll receive a prepaid return label via email. Simply print it and attach it to your package.</p>
+      <p>After you submit your return request on the Returns page, we will contact you by phone or email to arrange the return.</p>
       
       <h3>Step 3: Ship Your Return</h3>
       <p>Drop off your package at any authorized shipping location. You can find locations near you on our returns page.</p>
@@ -97,7 +97,7 @@ const relatedArticles = [
   { id: 7, title: 'What is your return policy?', category: 'Returns' },
   { id: 8, title: 'When will I get my refund?', category: 'Returns' },
   { id: 9, title: 'Can I exchange instead of return?', category: 'Returns' },
-  { id: 10, title: 'How do I print a return label?', category: 'Returns' }
+  { id: 10, title: 'How do I send an item back?', category: 'Returns' }
 ];
 
 export default function ArticlePage() {

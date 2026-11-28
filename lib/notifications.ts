@@ -133,7 +133,7 @@ function formatPhoneNumber(phone: string): string {
     return '+' + cleaned;
 }
 
-function isDeliverableEmail(email?: string): boolean {
+export function isDeliverableEmail(email?: string): boolean {
     if (!email) return false;
     const value = String(email).trim().toLowerCase();
     const isGuestPlaceholder = /^guest-\d+@shopmarieshair\.com$/.test(value);

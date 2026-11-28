@@ -57,38 +57,25 @@ export default function AnalyticsPage() {
 
       if (orderError) throw orderError;
 
-      // Fetch Order Items for Products & Categories
-      // This might be heavy for large DBs, but fine for typical small shop admin
-      const { data: items, error: itemError } = await supabase
+      // Items of those paid orders. Filter through the order (an id list in the
+      // URL gets too long for 30+ days of orders).
+      const { data: fetchedItems, error: itemFetchError } = await supabase
         .from('order_items')
         .select(`
-            *,
-            products (name, categories(name))
-         `)
-        .gte('created_at', isoStart); // Assuming order_items has created_at or join orders.. 
-      // Actually order_items usually doesn't have created_at directly in some schemas, 
-      // so we should join orders to filter by date.
-      // Simpler: fetch order_items for the fetched orders IDs.
-
-      let validItems: any[] = [];
-      if (orders && orders.length > 0) {
-        const orderIds = orders.map(o => o.id);
-        const { data: fetchedItems, error: itemFetchError } = await supabase
-          .from('order_items')
-          .select(`
-            quantity, 
-            unit_price, 
+            quantity,
+            unit_price,
             total_price,
             product_id,
-            products!inner(name, category_id, categories(name))
+            products!inner(name, category_id, categories(name)),
+            orders!inner(payment_status, status, created_at)
           `)
-          .in('order_id', orderIds);
-
-        if (itemFetchError) {
-          console.error('Error fetching order items:', itemFetchError);
-        }
-        if (fetchedItems) validItems = fetchedItems;
+        .eq('orders.payment_status', 'paid')
+        .neq('orders.status', 'cancelled')
+        .gte('orders.created_at', isoStart);
+      if (itemFetchError) {
+        console.error('Error fetching order items:', itemFetchError);
       }
+      const validItems: any[] = fetchedItems || [];
 
       // Process Metrics
       const totalRevenue = orders?.reduce((sum, o) => sum + (o.total || 0), 0) || 0;
@@ -168,6 +155,36 @@ export default function AnalyticsPage() {
   useEffect(() => {
     fetchAnalytics();
   }, [fetchAnalytics]);
+
+  const exportReport = () => {
+    const cell = (v: string | number) => {
+      const t = String(v ?? '');
+      return /[",\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
+    };
+    const rows: (string | number)[][] = [
+      ['Maries Hair sales report', timeRange],
+      [],
+      ['Revenue (GHS)', metrics.revenue.toFixed(2)],
+      ['Paid orders', metrics.orders],
+      ['Average order (GHS)', metrics.aov.toFixed(2)],
+      [],
+      ['Date', 'Revenue (GHS)', 'Orders'],
+      ...salesData.map((d: any) => [d.date, Number(d.sales).toFixed(2), d.orders]),
+      [],
+      ['Top products', 'Revenue (GHS)', 'Units'],
+      ...topProducts.map((p: any) => [p.name, Number(p.revenue).toFixed(2), p.units]),
+      [],
+      ['Category', 'Revenue (GHS)'],
+      ...categoryRevenue.map((c: any) => [c.name, Number(c.value).toFixed(2)]),
+    ];
+    const blob = new Blob([rows.map(r => r.map(cell).join(',')).join('\n')], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `maries-sales-${timeRange}-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   // Fetch visitor data
   const fetchVisitors = useCallback(async () => {
@@ -267,7 +284,11 @@ export default function AnalyticsPage() {
               <option value="90days">Last 90 Days</option>
               <option value="year">This Year</option>
             </select>
-            <button className="bg-stone-700 hover:bg-stone-800 text-white px-6 py-3 rounded-lg font-semibold transition-colors whitespace-nowrap cursor-pointer flex items-center justify-center">
+            <button
+              onClick={exportReport}
+              disabled={loading}
+              className="bg-stone-700 hover:bg-stone-800 text-white px-6 py-3 rounded-lg font-semibold transition-colors whitespace-nowrap cursor-pointer flex items-center justify-center disabled:opacity-50"
+            >
               <i className="ri-download-line mr-2"></i>
               Export
             </button>

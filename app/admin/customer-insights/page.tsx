@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
+import { buildCustomers, downloadCsv } from '@/lib/admin-customers';
 
 // Helper for currency formatting
 const formatCurrency = (amount: number) => {
@@ -35,67 +36,53 @@ export default function CustomerInsightsPage() {
     try {
       setLoading(true);
 
-      // 1. Fetch Profiles
-      const { data: profiles, error: profileError } = await supabase
-        .from('profiles')
-        .select('*');
-
+      // Same people and paid-only totals as the Customers page.
+      const [{ data: profiles, error: profileError }, { data: orders, error: orderError }] = await Promise.all([
+        supabase.from('profiles').select('id, email, full_name, phone, role, created_at'),
+        supabase
+          .from('orders')
+          .select('user_id, email, phone, total, created_at, status, payment_status, shipping_address, metadata'),
+      ]);
       if (profileError) throw profileError;
-
-      // 2. Fetch Orders for calculations
-      const { data: orders, error: orderError } = await supabase
-        .from('orders')
-        .select('user_id, total, created_at, status');
-
       if (orderError) throw orderError;
 
-      // 3. Aggregate Data
-      const aggregated = profiles.map((profile: any) => {
-        const userOrders = orders?.filter(o => o.user_id === profile.id) || [];
-        const totalSpent = userOrders.reduce((sum, o) => sum + (o.total || 0), 0);
-        const orderCount = userOrders.length;
+      const DAY = 1000 * 3600 * 24;
+      const aggregated = buildCustomers(profiles || [], orders || []).map(c => {
+        const daysSinceJoin = (Date.now() - c.firstSeen.getTime()) / DAY;
+        const lastOrderDate = c.lastOrder || c.firstSeen;
+        const daysSinceLastOrder = (Date.now() - lastOrderDate.getTime()) / DAY;
 
-        // Sort orders to find last order
-        const sortedOrders = [...userOrders].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-        const lastOrderDate = sortedOrders[0]?.created_at || profile.created_at;
-
-        // Calculate Segment
         let segment = 'new';
-        const daysSinceJoin = (new Date().getTime() - new Date(profile.created_at).getTime()) / (1000 * 3600 * 24);
-        const daysSinceLastOrder = (new Date().getTime() - new Date(lastOrderDate).getTime()) / (1000 * 3600 * 24);
-
-        if (totalSpent > 1000) segment = 'vip'; // VIP Threshold
-        else if (orderCount > 1) segment = 'returning';
-        else if (daysSinceLastOrder > 90 && orderCount > 0) segment = 'at-risk';
+        if (c.totalSpent > 1000) segment = 'vip';
+        else if (c.orders > 0 && daysSinceLastOrder > 90) segment = 'at-risk';
+        else if (c.orders > 1) segment = 'returning';
         else if (daysSinceJoin < 30) segment = 'new';
-        else segment = 'returning'; // Default bucket
+        else segment = 'returning';
 
-        // Risk Level
         let riskLevel = 'low';
         if (daysSinceLastOrder > 60) riskLevel = 'medium';
         if (daysSinceLastOrder > 120) riskLevel = 'high';
 
-        // Engagement Score (mock logic for now based on frequency)
         let engagementScore = 50;
         if (segment === 'vip') engagementScore += 40;
         if (riskLevel === 'high') engagementScore -= 30;
         if (daysSinceLastOrder < 30) engagementScore += 20;
 
         return {
-          id: profile.id,
-          name: profile.full_name || 'Unknown User',
-          email: profile.email,
-          phone: profile.phone || '-',
+          id: c.id,
+          name: c.name,
+          email: c.email,
+          phone: c.phone || '-',
           segment,
-          totalSpent,
-          orders: orderCount,
-          avgOrderValue: orderCount > 0 ? totalSpent / orderCount : 0,
-          lifetimeValue: totalSpent, // Simple CLV for now
-          joinDate: profile.created_at,
-          lastOrder: lastOrderDate,
+          totalSpent: c.totalSpent,
+          orders: c.orders,
+          avgOrderValue: c.orders > 0 ? c.totalSpent / c.orders : 0,
+          lifetimeValue: c.totalSpent,
+          joinDate: c.firstSeen.toISOString(),
+          lastOrder: lastOrderDate.toISOString(),
           riskLevel,
           engagementScore: Math.min(100, Math.max(0, engagementScore)),
-          tags: [] // Could be populated from metadata
+          tags: []
         };
       });
 
@@ -166,7 +153,23 @@ export default function CustomerInsightsPage() {
             <p className="text-gray-600 mt-1 md:mt-2 text-sm md:text-base">Deep dive into customer behavior and lifetime value</p>
           </div>
           <div className="flex flex-col sm:flex-row gap-3">
-            <button className="border-2 border-gray-300 hover:border-gray-400 text-gray-700 px-6 py-3 rounded-lg font-semibold transition-colors whitespace-nowrap flex items-center justify-center">
+            <button
+              onClick={() => {
+                const cell = (v: string | number) => {
+                  const t = String(v ?? '');
+                  return /[",\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
+                };
+                const rows = [
+                  ['Name', 'Email', 'Phone', 'Segment', 'Paid orders', 'Total spent (GHS)', 'Last order', 'Risk'],
+                  ...filteredCustomers.map((c: any) => [
+                    c.name, c.email, c.phone, c.segment, c.orders, Number(c.totalSpent).toFixed(2),
+                    String(c.lastOrder).slice(0, 10), c.riskLevel,
+                  ]),
+                ];
+                downloadCsv(`maries-customer-insights-${selectedSegment}.csv`, rows.map(r => r.map(cell).join(',')).join('\n'));
+              }}
+              className="border-2 border-gray-300 hover:border-gray-400 text-gray-700 px-6 py-3 rounded-lg font-semibold transition-colors whitespace-nowrap flex items-center justify-center"
+            >
               <i className="ri-download-line mr-2"></i>
               Export List
             </button>

@@ -7,8 +7,7 @@ import { supabase } from '@/lib/supabase';
 export default function InventoryManagementPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [stockFilter, setStockFilter] = useState('all');
-  const [showImportModal, setShowImportModal] = useState(false);
-  const [showExportModal, setShowExportModal] = useState(false);
+  const [restocking, setRestocking] = useState(false);
   const [selectedProducts, setSelectedProducts] = useState<string[]>([]);
   const [products, setProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -25,6 +24,7 @@ export default function InventoryManagementPage() {
         .select(`
           id,
           name,
+          slug,
           sku,
           price,
           quantity,
@@ -55,16 +55,15 @@ export default function InventoryManagementPage() {
           return {
             id: p.id,
             name: p.name,
+            slug: p.slug,
+            quantity: p.quantity || 0,
             sku: p.sku || 'N/A',
             category: catName || 'Uncategorized',
             currentStock: stock,
             hasVariants: variants.length > 0,
             reorderLevel: threshold,
-            reorderQuantity: 50,
             price: p.price || 0,
-            cost: 0,
             status,
-            supplier: 'Standard Supplier'
           };
         });
         setProducts(mapped);
@@ -104,10 +103,42 @@ export default function InventoryManagementPage() {
     }
   };
 
-  const handleBulkRestock = () => {
-    // Placeholder for bulk restock logic
-    alert("Bulk restock feature coming soon (requires backend logic).");
-    setSelectedProducts([]);
+  // Add the same number of units to each selected product. Products with
+  // variants keep stock per variant, so they are restocked from the product page.
+  const handleBulkRestock = async () => {
+    const chosen = products.filter(p => selectedProducts.includes(p.id));
+    const simple = chosen.filter(p => !p.hasVariants);
+    const withVariants = chosen.length - simple.length;
+    if (simple.length === 0) {
+      alert('These products have variants. Open each product to restock its variants.');
+      return;
+    }
+    const answer = prompt(
+      `Add how many units to each of the ${simple.length} selected product${simple.length > 1 ? 's' : ''}?` +
+        (withVariants ? `\n(${withVariants} with variants will be skipped.)` : '')
+    );
+    if (answer === null) return;
+    const units = Math.floor(Number(answer));
+    if (!Number.isFinite(units) || units <= 0) {
+      alert('Enter a whole number greater than 0.');
+      return;
+    }
+    setRestocking(true);
+    try {
+      const failed: string[] = [];
+      for (const product of simple) {
+        const { error } = await supabase
+          .from('products')
+          .update({ quantity: (Number(product.quantity) || 0) + units })
+          .eq('id', product.id);
+        if (error) failed.push(product.name);
+      }
+      if (failed.length) alert(`Could not restock: ${failed.join(', ')}`);
+      setSelectedProducts([]);
+      await fetchInventory();
+    } finally {
+      setRestocking(false);
+    }
   };
 
   const handleExportCSV = () => {
@@ -123,14 +154,14 @@ export default function InventoryManagementPage() {
       ])
     ];
 
-    const csvContent = csvData.map(row => row.join(',')).join('\n');
+    const cell = (v: string) => (/[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
+    const csvContent = csvData.map(row => row.map(cell).join(',')).join('\n');
     const blob = new Blob([csvContent], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
     a.download = `inventory-export-${new Date().toISOString().split('T')[0]}.csv`;
     a.click();
-    setShowExportModal(false);
   };
 
   return (
@@ -234,15 +265,7 @@ export default function InventoryManagementPage() {
               </div>
 
               <button
-                onClick={() => setShowImportModal(true)}
-                className="bg-stone-700 hover:bg-stone-800 text-white px-4 py-3 rounded-lg font-semibold transition-colors flex items-center space-x-2 whitespace-nowrap cursor-pointer"
-              >
-                <i className="ri-upload-line"></i>
-                <span>Import CSV</span>
-              </button>
-
-              <button
-                onClick={() => setShowExportModal(true)}
+                onClick={handleExportCSV}
                 className="border-2 border-gray-300 hover:border-gray-400 text-gray-700 px-4 py-3 rounded-lg font-semibold transition-colors flex items-center space-x-2 whitespace-nowrap cursor-pointer"
               >
                 <i className="ri-download-line"></i>
@@ -259,9 +282,10 @@ export default function InventoryManagementPage() {
               <div className="flex items-center space-x-3">
                 <button
                   onClick={handleBulkRestock}
-                  className="bg-stone-700 hover:bg-stone-800 text-white px-4 py-2 rounded-lg font-semibold transition-colors whitespace-nowrap cursor-pointer"
+                  disabled={restocking}
+                  className="bg-stone-700 hover:bg-stone-800 text-white px-4 py-2 rounded-lg font-semibold transition-colors whitespace-nowrap cursor-pointer disabled:opacity-60"
                 >
-                  Bulk Restock
+                  {restocking ? 'Restocking…' : 'Bulk Restock'}
                 </button>
                 <button
                   onClick={() => setSelectedProducts([])}
@@ -315,7 +339,6 @@ export default function InventoryManagementPage() {
                       <td className="px-6 py-4">
                         <div>
                           <p className="font-semibold text-gray-900">{product.name}</p>
-                          <p className="text-sm text-gray-500">{product.supplier}</p>
                         </div>
                       </td>
                       <td className="px-6 py-4 text-gray-700">{product.sku}</td>
@@ -350,18 +373,24 @@ export default function InventoryManagementPage() {
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex items-center space-x-2">
-                          <button
-                            className="w-8 h-8 flex items-center justify-center text-gray-600 hover:text-stone-700 transition-colors cursor-pointer"
-                            title="Edit"
+                          <Link
+                            href={`/admin/products/${product.id}`}
+                            className="w-8 h-8 flex items-center justify-center text-gray-600 hover:text-stone-700 transition-colors"
+                            title="Edit product and stock"
                           >
                             <i className="ri-edit-line text-lg"></i>
-                          </button>
-                          <button
-                            className="w-8 h-8 flex items-center justify-center text-gray-600 hover:text-stone-700 transition-colors cursor-pointer"
-                            title="View Details"
-                          >
-                            <i className="ri-eye-line text-lg"></i>
-                          </button>
+                          </Link>
+                          {product.slug && (
+                            <a
+                              href={`/product/${product.slug}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="w-8 h-8 flex items-center justify-center text-gray-600 hover:text-stone-700 transition-colors"
+                              title="View in shop"
+                            >
+                              <i className="ri-eye-line text-lg"></i>
+                            </a>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -372,8 +401,6 @@ export default function InventoryManagementPage() {
           </div>
         </div>
       </div>
-      {showImportModal && <div className="hidden">Mock Modal</div>}
-      {showExportModal && <div className="hidden">Mock Export</div>}
     </div>
   );
 }

@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { verifyAuth } from '@/lib/auth';
 import { escapeHtml } from '@/lib/sanitize';
-import { sendOrderConfirmation, sendOrderStatusUpdate, sendWelcomeMessage, sendContactMessage, sendPaymentLink, sendEmail, sendSMS, emailLayout } from '@/lib/notifications';
+import { sendOrderConfirmation, sendOrderStatusUpdate, sendWelcomeMessage, sendContactMessage, sendPaymentLink, sendEmail, sendSMS, emailLayout, isDeliverableEmail } from '@/lib/notifications';
 import { checkRateLimit, getClientIdentifier, RATE_LIMITS } from '@/lib/rate-limit';
 
 export async function POST(request: Request) {
@@ -190,7 +190,8 @@ export async function POST(request: Request) {
             for (const recipient of recipients) {
                 try {
                     // Send email (skip duplicates)
-                    if (channels?.email && recipient.email) {
+                    // Skip placeholder addresses (guest-…@shopmarieshair.com, …@pos.local).
+                    if (channels?.email && recipient.email && isDeliverableEmail(recipient.email)) {
                         const emailKey = recipient.email.toLowerCase().trim();
                         if (!seenEmails.has(emailKey)) {
                             seenEmails.add(emailKey);
@@ -214,11 +215,12 @@ export async function POST(request: Request) {
                         const phoneKey = recipient.phone.replace(/[\s\-\(\)\.]+/g, '');
                         if (!seenPhones.has(phoneKey)) {
                             seenPhones.add(phoneKey);
-                            await sendSMS({
+                            const sent = await sendSMS({
                                 to: recipient.phone,
                                 message: message // SMS is plain text, no XSS risk
                             });
-                            results.sms++;
+                            if (sent?.status === 1) results.sms++;
+                            else results.errors++;
                         }
                     }
                 } catch (err: any) {

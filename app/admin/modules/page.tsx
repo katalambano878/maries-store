@@ -28,7 +28,7 @@ const colorMap: Record<string, string> = {
 export default function ModulesPage() {
   const [loading, setLoading] = useState(true);
 
-  // Base definitions of modules
+  // Only modules that switch something on in the admin menu
   const [modules, setModules] = useState<Module[]>([
     {
       id: 'notifications',
@@ -36,33 +36,6 @@ export default function ModulesPage() {
       description: 'Send Email and SMS campaigns to customers',
       icon: 'ri-notification-3-line',
       color: 'red',
-      enabled: false,
-      category: 'Marketing'
-    },
-    {
-      id: 'cms',
-      name: 'CMS / Pages',
-      description: 'Manage website content, policies, and landing pages',
-      icon: 'ri-file-list-line',
-      color: 'blue',
-      enabled: false,
-      category: 'Content'
-    },
-    {
-      id: 'homepage',
-      name: 'Homepage Config',
-      description: 'Customize homepage sections and banners',
-      icon: 'ri-home-gear-line',
-      color: 'purple',
-      enabled: false,
-      category: 'Content'
-    },
-    {
-      id: 'blog',
-      name: 'Blog Management',
-      description: 'Create and manage blog posts',
-      icon: 'ri-article-line',
-      color: 'teal',
       enabled: false,
       category: 'Marketing'
     },
@@ -75,33 +48,6 @@ export default function ModulesPage() {
       enabled: false,
       category: 'Analytics'
     },
-    {
-      id: 'flash-sales',
-      name: 'Flash Sales',
-      description: 'Time-limited promotional sales with countdown timers',
-      icon: 'ri-flashlight-line',
-      color: 'amber',
-      enabled: false,
-      category: 'Marketing'
-    },
-    {
-      id: 'loyalty-program',
-      name: 'Loyalty Program',
-      description: 'Points and rewards system for customer retention',
-      icon: 'ri-trophy-line',
-      color: 'yellow',
-      enabled: false,
-      category: 'Marketing'
-    },
-    {
-      id: 'pwa-settings',
-      name: 'PWA / Mobile App',
-      description: 'Configure Progressive Web App settings',
-      icon: 'ri-smartphone-line',
-      color: 'indigo',
-      enabled: false,
-      category: 'Mobile'
-    }
   ]);
 
   const [searchTerm, setSearchTerm] = useState('');
