@@ -350,17 +350,7 @@ export default function CheckoutPage() {
 
       // Note: Stock reduction happens in mark_order_paid when payment is confirmed
 
-      // 3. Upsert Customer Record (for both guest and registered users)
-      const fullName = `${shippingData.firstName} ${shippingData.lastName}`.trim();
-      await supabase.rpc('upsert_customer_from_order', {
-        p_email: customerEmail,
-        p_phone: shippingData.phone,
-        p_full_name: fullName,
-        p_first_name: shippingData.firstName,
-        p_last_name: shippingData.lastName,
-        p_user_id: user?.id || null,
-        p_address: shippingData
-      });
+      // The admin's customer list is built from paid orders, so nothing to record here.
 
       // 4. Hubtel payment (MoMo & Card)
       try {

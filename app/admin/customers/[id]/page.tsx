@@ -2,11 +2,11 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
-import { useRouter, useParams } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import Link from 'next/link';
+import { isRealEmail } from '@/lib/admin-customers';
 
 export default function CustomerDetailsPage() {
-    const router = useRouter();
     const params = useParams();
     const customerId = params.id as string;
     
@@ -16,51 +16,47 @@ export default function CustomerDetailsPage() {
 
     const fetchCustomerData = useCallback(async () => {
         try {
-            // Guest shoppers have no profile; the customer list links them as
-            // `guest-<n>-<email>`, so show them from their orders instead.
-            const guestMatch = /^guest-\d+-(.+)$/.exec(decodeURIComponent(customerId));
-            if (guestMatch) {
-                const email = guestMatch[1];
-                const { data: guestOrders, error: guestError } = await supabase
-                    .from('orders')
-                    .select('*')
-                    .eq('email', email)
-                    .order('created_at', { ascending: false });
+            const id = decodeURIComponent(customerId);
+            const fromOrders = (list: any[], fallback: { email?: string; phone?: string }) => {
+                const latest = list[0];
+                const first = latest?.metadata?.first_name || latest?.shipping_address?.firstName || '';
+                const last = latest?.metadata?.last_name || latest?.shipping_address?.lastName || '';
+                return {
+                    email: isRealEmail(latest?.email) ? latest.email : fallback.email || '',
+                    full_name: `${first} ${last}`.trim() || 'Guest',
+                    phone: latest?.phone || latest?.shipping_address?.phone || fallback.phone || null,
+                    created_at: list[list.length - 1]?.created_at,
+                };
+            };
+
+            // Guests (no account) are keyed by phone, or by email when there is no phone.
+            const phoneMatch = /^phone-(\d{9})$/.exec(id);
+            const emailMatch = /^email-(.+)$/.exec(id) || /^guest-\d+-(.+)$/.exec(id);
+            if (phoneMatch || emailMatch) {
+                const { data: found, error: guestError } = phoneMatch
+                    ? await supabase.from('orders').select('*').ilike('phone', `%${phoneMatch[1]}%`).order('created_at', { ascending: false })
+                    : await supabase.from('orders').select('*').eq('email', emailMatch![1]).order('created_at', { ascending: false });
                 if (guestError) throw guestError;
-                const latest = guestOrders?.[0];
-                if (latest) {
-                    const first = latest.metadata?.first_name || latest.shipping_address?.firstName || '';
-                    const last = latest.metadata?.last_name || latest.shipping_address?.lastName || '';
-                    setCustomer({
-                        email,
-                        full_name: `${first} ${last}`.trim() || 'Guest',
-                        phone: latest.phone || latest.shipping_address?.phone || null,
-                        created_at: guestOrders[guestOrders.length - 1].created_at,
-                    });
+                const guestOrders = (found || []).filter((o: any) => !o.user_id);
+                if (guestOrders.length) {
+                    setCustomer(fromOrders(guestOrders, { phone: phoneMatch ? `0${phoneMatch[1]}` : undefined, email: emailMatch?.[1] }));
                     setOrders(guestOrders);
                 }
                 return;
             }
 
-            // 1. Fetch Profile
             const { data: profile, error: profileError } = await supabase
                 .from('profiles')
                 .select('*')
-                .eq('id', customerId)
+                .eq('id', id)
                 .single();
-
             if (profileError) throw profileError;
 
-            // 2. Fetch Orders
-            const { data: ordersData, error: ordersError } = await supabase
+            const { data: ordersData } = await supabase
                 .from('orders')
                 .select('*')
-                .eq('user_id', customerId)
+                .eq('user_id', id)
                 .order('created_at', { ascending: false });
-
-            if (ordersError && ordersError.code !== 'PGRST116') { // Ignore not found if simply no orders? No, select returns empty array usually
-                // Actually select returns empty array if no match, not error.
-            }
 
             setCustomer(profile);
             setOrders(ordersData || []);
@@ -80,7 +76,9 @@ export default function CustomerDetailsPage() {
     if (loading) return <div className="p-8 text-center text-gray-500">Loading customer details...</div>;
     if (!customer) return <div className="p-8 text-center text-red-500">Customer not found</div>;
 
-    const totalSpent = orders.reduce((sum, order) => sum + (order.total || 0), 0);
+    const paidOrders = orders.filter(order => order.payment_status === 'paid' && order.status !== 'cancelled');
+    const totalSpent = paidOrders.reduce((sum, order) => sum + (Number(order.total) || 0), 0);
+    const phoneDigits = String(customer.phone || '').replace(/\D/g, '').slice(-9);
 
     return (
         <div className="max-w-7xl mx-auto">
@@ -91,21 +89,31 @@ export default function CustomerDetailsPage() {
                         <i className="ri-arrow-left-line text-xl"></i>
                     </Link>
                     <div className="w-16 h-16 bg-stone-100 rounded-full flex items-center justify-center text-stone-700 text-2xl font-bold">
-                        {customer.full_name?.charAt(0) || customer.email.charAt(0).toUpperCase()}
+                        {(customer.full_name || customer.email || '?').charAt(0).toUpperCase()}
                     </div>
                     <div>
                         <h1 className="text-3xl font-bold text-gray-900">{customer.full_name || 'No Name'}</h1>
-                        <p className="text-gray-500">{customer.email}</p>
+                        <p className="text-gray-500">{isRealEmail(customer.email) ? customer.email : 'No email'}</p>
                     </div>
                 </div>
                 <div className="flex space-x-3">
-                    <button className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 font-medium hover:bg-gray-50 cursor-pointer">
-                        <i className="ri-mail-send-line mr-2"></i>
-                        Send Email
-                    </button>
-                    <button className="px-4 py-2 bg-stone-600 text-white rounded-lg font-bold hover:bg-stone-700 cursor-pointer">
-                        Edit Customer
-                    </button>
+                    {isRealEmail(customer.email) && (
+                        <a href={`mailto:${customer.email}`} className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 font-medium hover:bg-gray-50">
+                            <i className="ri-mail-send-line mr-2"></i>
+                            Send Email
+                        </a>
+                    )}
+                    {phoneDigits.length === 9 && (
+                        <a
+                            href={`https://wa.me/233${phoneDigits}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="px-4 py-2 bg-stone-600 text-white rounded-lg font-bold hover:bg-stone-700"
+                        >
+                            <i className="ri-whatsapp-line mr-2"></i>
+                            WhatsApp
+                        </a>
+                    )}
                 </div>
             </div>
 
@@ -116,8 +124,8 @@ export default function CustomerDetailsPage() {
                     <p className="text-2xl font-bold text-gray-900">GH₵{totalSpent.toFixed(2)}</p>
                 </div>
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-                    <p className="text-sm font-medium text-gray-500 mb-1">Total Orders</p>
-                    <p className="text-2xl font-bold text-gray-900">{orders.length}</p>
+                    <p className="text-sm font-medium text-gray-500 mb-1">Paid Orders</p>
+                    <p className="text-2xl font-bold text-gray-900">{paidOrders.length}</p>
                 </div>
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
                     <p className="text-sm font-medium text-gray-500 mb-1">Last Order</p>
@@ -154,7 +162,10 @@ export default function CustomerDetailsPage() {
                             {orders.map(order => (
                                 <tr key={order.id} className="hover:bg-gray-50">
                                     <td className="px-6 py-4 text-sm font-medium text-stone-600">
-                                        <Link href={`/admin/orders/${order.id}`}>#{order.id.slice(0, 8)}</Link>
+                                        <Link href={`/admin/orders/${order.id}`}>{order.order_number || `#${order.id.slice(0, 8)}`}</Link>
+                                        {order.payment_status !== 'paid' && (
+                                            <span className="ml-2 text-xs text-gray-400">unpaid</span>
+                                        )}
                                     </td>
                                     <td className="px-6 py-4 text-sm text-gray-600">
                                         {new Date(order.created_at).toLocaleDateString()}
@@ -164,11 +175,11 @@ export default function CustomerDetailsPage() {
                                             ${order.status === 'completed' || order.status === 'delivered' ? 'bg-stone-100 text-stone-800' :
                                                 order.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
                                                     order.status === 'cancelled' ? 'bg-red-100 text-red-800' : 'bg-stone-100 text-stone-800'}`}>
-                                            {order.status.replace('_', ' ')}
+                                            {order.status === 'shipped' ? 'Packaged' : order.status.replace('_', ' ')}
                                         </span>
                                     </td>
                                     <td className="px-6 py-4 text-sm font-bold text-gray-900">
-                                        GH₵{(order.total || 0).toFixed(2)}
+                                        GH₵{(Number(order.total) || 0).toFixed(2)}
                                     </td>
                                     <td className="px-6 py-4 text-right">
                                         <Link href={`/admin/orders/${order.id}`} className="text-gray-400 hover:text-stone-600">

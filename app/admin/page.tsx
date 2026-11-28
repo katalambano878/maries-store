@@ -7,7 +7,8 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { thumbSrc } from '@/lib/image-src';
 
 export default function AdminDashboard() {
-  const [dateRange, setDateRange] = useState('7days'); // logic not implemented for this demo, just UI
+  const [dateRange, setDateRange] = useState('7days');
+  const [paidOrdersData, setPaidOrdersData] = useState<{ total: number; created_at: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [hasMounted, setHasMounted] = useState(false);
 
@@ -52,85 +53,99 @@ export default function AdminDashboard() {
   const [topProducts, setTopProducts] = useState<any[]>([]);
   const [chartData, setChartData] = useState<any[]>([]);
 
+  // Revenue per day for the chosen range, from paid orders.
+  useEffect(() => {
+    const days = dateRange === '30days' ? 30 : 7;
+    const keys = Array.from({ length: days }, (_, i) => {
+      const d = new Date();
+      d.setDate(d.getDate() - (days - 1 - i));
+      return d.toISOString().split('T')[0];
+    });
+    const byDay: Record<string, number> = Object.fromEntries(keys.map(k => [k, 0]));
+    paidOrdersData.forEach(order => {
+      const key = new Date(order.created_at).toISOString().split('T')[0];
+      if (key in byDay) byDay[key] += order.total;
+    });
+    setChartData(keys.map(key => ({
+      date: new Date(key).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }),
+      revenue: byDay[key]
+    })));
+  }, [dateRange, paidOrdersData]);
+
   useEffect(() => {
     async function fetchDashboardData() {
       try {
         // 1. Fetch ALL Orders for count & customers
         const { data: allOrdersData, error: ordersError } = await supabase
           .from('orders')
-          .select('total, status, payment_status, created_at, email');
+          .select('total, status, payment_status, created_at, email, phone');
 
         if (ordersError) throw ordersError;
 
-        // Only count PAID orders for revenue & avg order value
-        const paidOrders = allOrdersData?.filter(o => o.payment_status === 'paid') || [];
-        const totalRevenue = paidOrders.reduce((sum, order) => sum + (order.total || 0), 0);
-        const totalOrders = allOrdersData?.length || 0;
-        const paidOrderCount = paidOrders.length;
-        const avgOrderValue = paidOrderCount > 0 ? totalRevenue / paidOrderCount : 0;
+        // Only paid orders count as sales; unpaid checkouts are abandoned carts.
+        const paidOrders = (allOrdersData || []).filter(o => o.payment_status === 'paid');
+        setPaidOrdersData(paidOrders.map(o => ({ total: Number(o.total) || 0, created_at: o.created_at })));
 
-        // 2. Fetch Customers Count (approximation using orders unique emails if we don't have user metrics access)
-        // Since we can't query auth.users directly from client, we'll estimate active customers via orders or just keep it 0 if we can't.
-        // Actually, best to just show "Orders" or "Recent Signups" if we had a public profiles table.
-        // We'll use unique emails from orders as a proxy for "Customers"
-        const uniqueCustomers = new Set(allOrdersData?.map(o => o.email)).size;
-
-
-        // Process Chart Data (Last 7 Days) - only count PAID orders as revenue
-        const last7Days = Array.from({ length: 7 }, (_, i) => {
-          const d = new Date();
-          d.setDate(d.getDate() - (6 - i));
-          return d.toISOString().split('T')[0];
-        });
-
-        const chartMap = last7Days.reduce((acc: any, date) => {
-          acc[date] = 0;
-          return acc;
-        }, {});
-
-        paidOrders.forEach(order => {
-          const date = new Date(order.created_at).toISOString().split('T')[0];
-          if (chartMap[date] !== undefined) {
-            chartMap[date] += (order.total || 0);
-          }
-        });
-
-        const processedChartData = Object.keys(chartMap).map(date => ({
-          date: new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-          revenue: chartMap[date]
-        }));
-        setChartData(processedChartData);
+        // Guests get a unique placeholder email per order, so count people by phone first.
+        const contactOf = (o: any) => {
+          const phone = String(o.phone || '').replace(/\D/g, '').replace(/^233/, '').replace(/^0/, '');
+          return phone.length >= 9 ? `p:${phone}` : `e:${String(o.email || '').toLowerCase()}`;
+        };
+        const DAY = 24 * 60 * 60 * 1000;
+        const now = Date.now();
+        const inWindow = (o: any, fromDaysAgo: number, toDaysAgo: number) => {
+          const t = new Date(o.created_at).getTime();
+          return t > now - fromDaysAgo * DAY && t <= now - toDaysAgo * DAY;
+        };
+        const summarize = (list: any[]) => {
+          const revenue = list.reduce((sum, o) => sum + (Number(o.total) || 0), 0);
+          return {
+            revenue,
+            orders: list.length,
+            customers: new Set(list.map(contactOf)).size,
+            avg: list.length ? revenue / list.length : 0,
+          };
+        };
+        const all = summarize(paidOrders);
+        const last30 = summarize(paidOrders.filter(o => inWindow(o, 30, 0)));
+        const prev30 = summarize(paidOrders.filter(o => inWindow(o, 60, 30)));
+        const change = (current: number, previous: number) => {
+          if (previous <= 0) return current > 0 ? 'New' : '0%';
+          const pct = Math.round(((current - previous) / previous) * 100);
+          return `${pct > 0 ? '+' : ''}${pct}%`;
+        };
+        const money = (n: number) => `GH₵ ${n.toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
         setStats([
           {
             title: 'Total Revenue',
-            value: `GH₵ ${totalRevenue.toFixed(2)}`,
-            change: '+0%', // Dynamic change requires date filtering logic which is complex
-            trend: 'up',
+            value: money(all.revenue),
+            change: change(last30.revenue, prev30.revenue),
+            trend: last30.revenue >= prev30.revenue ? 'up' : 'down',
             icon: 'ri-money-dollar-circle-line',
             color: 'blue'
           },
           {
-            title: 'Orders',
-            value: totalOrders.toString(),
-            change: '+0%',
-            trend: 'up',
+            title: 'Paid Orders',
+            value: all.orders.toLocaleString('en-GH'),
+            change: change(last30.orders, prev30.orders),
+            trend: last30.orders >= prev30.orders ? 'up' : 'down',
             icon: 'ri-shopping-bag-line',
             color: 'blue'
           },
           {
-            title: 'Customers (Active)',
-            value: uniqueCustomers.toString(), // Proxy
-            change: '+0%',
-            trend: 'up',
+            title: 'Customers',
+            value: all.customers.toLocaleString('en-GH'),
+            change: change(last30.customers, prev30.customers),
+            trend: last30.customers >= prev30.customers ? 'up' : 'down',
             icon: 'ri-group-line',
             color: 'purple'
           },
           {
             title: 'Avg Order Value',
-            value: `GH₵ ${avgOrderValue.toFixed(2)}`,
-            change: '+0%',
-            trend: 'up',
+            value: money(all.avg),
+            change: change(last30.avg, prev30.avg),
+            trend: last30.avg >= prev30.avg ? 'up' : 'down',
             icon: 'ri-line-chart-line',
             color: 'amber'
           }
@@ -139,7 +154,7 @@ export default function AdminDashboard() {
         // 3. Fetch Recent Orders (only paid orders)
         const { data: recentOrdersData } = await supabase
           .from('orders')
-          .select('id, order_number, user_id, email, created_at, total, status, shipping_address')
+          .select('id, order_number, user_id, email, created_at, total, status, shipping_address, order_items(quantity)')
           .eq('payment_status', 'paid')
           .order('created_at', { ascending: false })
           .limit(5);
@@ -158,7 +173,7 @@ export default function AdminDashboard() {
               date: new Date(o.created_at).toLocaleDateString(),
               total: o.total,
               status: o.status,
-              items: 1
+              items: (o.order_items || []).reduce((n: number, i: any) => n + (i.quantity || 0), 0)
             };
           });
           setRecentOrders(formattedRecent);
@@ -168,7 +183,9 @@ export default function AdminDashboard() {
         const { data: lowStockData } = await supabase
           .from('products')
           .select('name, quantity')
+          .eq('status', 'active')
           .lt('quantity', 10)
+          .order('quantity', { ascending: true })
           .limit(5);
 
         if (lowStockData) {
@@ -179,19 +196,41 @@ export default function AdminDashboard() {
           })));
         }
 
-        // 5. Fetch Top Products (Approximation: High Price or just Random for now, 
-        // real top selling requires aggregation on order_items which is complex for client-side)
-        // real top selling requires aggregation on order_items which is complex for client-side)
-        const { data: productData } = await supabase.from('products').select('*, product_images(url)').limit(4);
-        if (productData) {
-          setTopProducts(productData.map((p: any) => ({
-            id: p.id,
-            name: p.name,
-            image: p.product_images?.[0]?.url || 'https://via.placeholder.com/200',
-            sales: 0, // Mocked for now
-            revenue: 0, // Mocked for now
-            stock: p.quantity
-          })));
+        // 5. Best sellers over the last 30 days, from paid orders' items.
+        const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+        const { data: soldItems } = await supabase
+          .from('order_items')
+          .select('product_id, quantity, total_price, orders!inner(payment_status, created_at)')
+          .eq('orders.payment_status', 'paid')
+          .gte('orders.created_at', since);
+        const totals = new Map<string, { sales: number; revenue: number }>();
+        (soldItems || []).forEach((item: any) => {
+          if (!item.product_id) return;
+          const t = totals.get(item.product_id) || { sales: 0, revenue: 0 };
+          t.sales += Number(item.quantity) || 0;
+          t.revenue += Number(item.total_price) || 0;
+          totals.set(item.product_id, t);
+        });
+        const topIds = [...totals.entries()].sort((a, b) => b[1].sales - a[1].sales).slice(0, 4).map(([id]) => id);
+        if (topIds.length) {
+          const { data: productData } = await supabase
+            .from('products')
+            .select('id, name, quantity, product_images(url)')
+            .in('id', topIds);
+          const byId = new Map((productData || []).map((p: any) => [p.id, p]));
+          setTopProducts(topIds.filter(id => byId.has(id)).map(id => {
+            const p: any = byId.get(id);
+            return {
+              id,
+              name: p.name,
+              image: p.product_images?.[0]?.url || '',
+              sales: totals.get(id)!.sales,
+              revenue: totals.get(id)!.revenue,
+              stock: p.quantity
+            };
+          }));
+        } else {
+          setTopProducts([]);
         }
 
       } catch (error) {
@@ -257,7 +296,10 @@ export default function AdminDashboard() {
                 <div className={`w-12 h-12 flex items-center justify-center bg-${stat.color}-100 text-${stat.color}-700 rounded-lg`}>
                   <i className={`${stat.icon} text-2xl`}></i>
                 </div>
-                <span className={`text-sm font-semibold text-stone-700`}>
+                <span
+                  className={`text-sm font-semibold ${(stat as any).trend === 'down' ? 'text-red-600' : 'text-stone-700'}`}
+                  title="Last 30 days compared with the 30 days before"
+                >
                   {stat.change}
                 </span>
               </div>
@@ -410,8 +452,8 @@ export default function AdminDashboard() {
                   ))}
                 </div>
               )}
-              <Link href="/admin/products?filter=low-stock" className="block text-center mt-4 text-stone-700 hover:text-stone-800 font-medium text-sm whitespace-nowrap cursor-pointer">
-                View All Products <i className="ri-arrow-right-line ml-1"></i>
+              <Link href="/admin/inventory" className="block text-center mt-4 text-stone-700 hover:text-stone-800 font-medium text-sm whitespace-nowrap cursor-pointer">
+                Open Inventory <i className="ri-arrow-right-line ml-1"></i>
               </Link>
             </div>
           </div>
@@ -419,12 +461,13 @@ export default function AdminDashboard() {
 
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6 overflow-hidden">
           <div className="flex items-center justify-between mb-6">
-            <h2 className="text-xl font-bold text-gray-900">Products</h2>
+            <h2 className="text-xl font-bold text-gray-900">Best sellers (last 30 days)</h2>
             <Link href="/admin/products" className="text-stone-700 hover:text-stone-800 font-medium text-sm whitespace-nowrap cursor-pointer">
               View All <i className="ri-arrow-right-line ml-1"></i>
             </Link>
           </div>
 
+          {topProducts.length === 0 && <p className="text-gray-500 text-center py-4">No sales in the last 30 days.</p>}
           <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
             {topProducts.map((product) => (
               <div key={product.id} className="border border-gray-200 rounded-xl p-4 hover:shadow-md transition-shadow">
@@ -433,7 +476,7 @@ export default function AdminDashboard() {
                 </div>
                 <h3 className="font-semibold text-gray-900 mb-2 line-clamp-2">{product.name}</h3>
                 <div className="mt-3 pt-3 border-t border-gray-200 flex items-center justify-between">
-                  <span className="text-sm text-gray-600">Stock: {product.stock}</span>
+                  <span className="text-sm text-gray-600">{product.sales} sold · Stock: {product.stock}</span>
                   <Link href={`/admin/products/${product.id}`} className="text-stone-700 hover:text-stone-800 text-sm font-medium whitespace-nowrap cursor-pointer">
                     Edit <i className="ri-arrow-right-line ml-1"></i>
                   </Link>

@@ -68,8 +68,9 @@ export default function PWAInstaller() {
     window.addEventListener('beforeinstallprompt', handleBeforeInstall);
     window.addEventListener('appinstalled', handleInstalled);
 
-    // Register service worker with update detection
-    if ('serviceWorker' in navigator) {
+    // Register service worker with update detection (production only: dev
+    // chunks keep the same URLs, so its cache-first rule would serve stale code)
+    if ('serviceWorker' in navigator && process.env.NODE_ENV === 'production') {
       navigator.serviceWorker
         .register('/service-worker.js', { scope: '/' })
         .then((registration) => {
