@@ -307,17 +307,34 @@ export default function AdminOrdersPage() {
     }
   };
 
+  // Ghana numbers are written 054..., 23354... or +233 54...; compare them as 054...
+  const normalizePhone = (value: string) => value.replace(/\D/g, '').replace(/^233/, '0');
+
+  const query = searchQuery.trim().toLowerCase();
+  // Hubtel receipts show the order number plus a "-r..." suffix (e.g. ORD-...-755-rmwyv3u0r).
+  const queryOrderNumber = query.replace(/-r[a-z0-9]+$/, '');
+  const queryPhone = normalizePhone(query);
+
   const filteredOrders = orders.filter(order => {
     const customerName = getCustomerName(order).toLowerCase();
     const customerEmail = getCustomerEmail(order).toLowerCase();
     const orderId = (order.order_number || order.id).toLowerCase();
+    const references = [
+      order.metadata?.hubtel_client_reference,
+      order.metadata?.hubtel_checkout_id,
+      order.metadata?.tracking_number,
+    ].filter(Boolean).map((ref: string) => String(ref).toLowerCase());
 
     const isConfirmed = order.payment_status === 'paid';
     const matchesViewTab = orderViewTab === 'confirmed' ? isConfirmed : !isConfirmed;
 
-    const matchesSearch = orderId.includes(searchQuery.toLowerCase()) ||
-      customerName.includes(searchQuery.toLowerCase()) ||
-      customerEmail.includes(searchQuery.toLowerCase());
+    const matchesSearch = !query ||
+      orderId.includes(query) ||
+      (queryOrderNumber !== query && orderId === queryOrderNumber) ||
+      customerName.includes(query) ||
+      customerEmail.includes(query) ||
+      references.some(ref => ref.includes(query)) ||
+      (queryPhone.length >= 6 && normalizePhone(order.phone || '').includes(queryPhone));
     const matchesStatus = statusFilter === 'all' || order.status === statusFilter;
     const matchesProduct = productFilter === 'all' || 
       order.order_items?.some((item: any) => item.product_name === productFilter);
@@ -450,7 +467,7 @@ export default function AdminOrdersPage() {
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search by order ID, customer name, or email..."
+                  placeholder="Search by order number, Hubtel reference, name, email or phone..."
                   className="w-full pl-12 pr-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-stone-500 focus:border-stone-500 text-sm"
                 />
               </div>
