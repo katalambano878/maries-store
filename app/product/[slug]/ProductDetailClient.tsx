@@ -236,7 +236,8 @@ export default function ProductDetailClient({ slug }: { slug: string }) {
     if (selectedVariant) {
       const color = selectedVariant.color || selectedColor || '';
       const name = selectedVariant.name || '';
-      if (color && name) {
+      // Colour-only variants carry the colour as their name too.
+      if (color && name && color.toLowerCase() !== name.toLowerCase()) {
         variantLabel = `${color} / ${name}`;
       } else {
         variantLabel = color || name || undefined;

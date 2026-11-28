@@ -61,7 +61,11 @@ function parseVariantRowFromDb(v: any) {
     let size = '';
     if (opt2) {
         color = normalizeColorName(opt2);
-        size = normalizeSizeName(opt1 || nm);
+        // A colour-only variant is saved with its colour as the name too, so
+        // the name is not a size then (reading it as one dropped the row's
+        // stock and sale price when the product was edited).
+        const nameIsColour = !opt1 && nm.toLowerCase() === opt2.toLowerCase();
+        size = nameIsColour ? '' : normalizeSizeName(opt1 || nm);
     } else if (opt1) {
         size = normalizeSizeName(opt1);
         color = '';
