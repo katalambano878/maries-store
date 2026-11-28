@@ -2,7 +2,10 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
+import { useCart } from '@/context/CartContext';
+import { thumbSrc } from '@/lib/image-src';
 
 interface Order {
   id: string;
@@ -12,6 +15,10 @@ interface Order {
   total: number;
   items: {
     id: string;
+    productId: string | null;
+    variantId: string | null;
+    variantName: string | null;
+    slug: string;
     name: string;
     image: string;
     quantity: number;
@@ -22,6 +29,10 @@ interface Order {
 export default function OrderHistory() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
+  const [reorderMessage, setReorderMessage] = useState('');
+  const [reorderingId, setReorderingId] = useState<string | null>(null);
+  const { addToCart } = useCart();
+  const router = useRouter();
 
   useEffect(() => {
     async function fetchOrders() {
@@ -49,8 +60,12 @@ export default function OrderHistory() {
             total: order.total,
             items: order.order_items.map((item: any) => ({
               id: item.id,
+              productId: item.product_id,
+              variantId: item.variant_id,
+              variantName: item.variant_name,
+              slug: item.metadata?.slug || '',
               name: item.product_name,
-              image: item.metadata?.image || 'https://via.placeholder.com/150',
+              image: item.metadata?.image || '',
               quantity: item.quantity,
               price: item.unit_price
             }))
@@ -82,15 +97,53 @@ export default function OrderHistory() {
     }
   };
 
-  const handleReorder = (order: Order) => {
-    // Implement reorder logic (add items back to cart)
-    console.log('Reordering:', order);
-    alert('Reorder feature coming soon!');
-  };
+  // Put the order's items back in the cart at today's price; checkout prices them again.
+  const handleReorder = async (order: Order) => {
+    setReorderingId(order.id);
+    setReorderMessage('');
+    try {
+      const productIds = Array.from(new Set(order.items.map(i => i.productId).filter(Boolean))) as string[];
+      const { data: products } = productIds.length
+        ? await supabase
+            .from('products')
+            .select('id, name, slug, price, quantity, status, moq, product_variants(id, name, price, quantity)')
+            .in('id', productIds)
+        : { data: [] as any[] };
+      const byId = new Map((products || []).map((p: any) => [p.id, p]));
 
-  const handleDownloadInvoice = (orderId: string) => {
-    console.log('Downloading invoice for order:', orderId);
-    alert('Invoice download coming soon!');
+      let added = 0;
+      for (const item of order.items) {
+        const product: any = item.productId ? byId.get(item.productId) : null;
+        if (!product || product.status !== 'active') continue;
+        const variant = item.variantId ? (product.product_variants || []).find((v: any) => v.id === item.variantId) : null;
+        const stock = Number(variant ? variant.quantity : product.quantity) || 0;
+        if (stock <= 0) continue;
+        addToCart({
+          id: product.id,
+          name: product.name,
+          price: Number(variant?.price ?? product.price) || item.price,
+          image: item.image,
+          quantity: Math.min(Math.max(item.quantity, product.moq || 1), stock),
+          variant: variant?.name || item.variantName || undefined,
+          variantId: variant?.id || null,
+          slug: product.slug || item.slug,
+          maxStock: stock,
+          moq: product.moq || 1,
+        });
+        added++;
+      }
+
+      if (added === 0) {
+        setReorderMessage('None of the items in this order are available right now.');
+        return;
+      }
+      router.push('/cart');
+    } catch (err) {
+      console.error('Reorder failed:', err);
+      setReorderMessage('Could not add these items to your cart. Please try again.');
+    } finally {
+      setReorderingId(null);
+    }
   };
 
   if (loading) {
@@ -126,6 +179,10 @@ export default function OrderHistory() {
         </div>
       </div>
 
+      {reorderMessage && (
+        <div className="mb-6 p-4 rounded-xl bg-amber-50 text-amber-800 border border-amber-100 text-sm">{reorderMessage}</div>
+      )}
+
       <div className="space-y-6">
         {orders.map((order) => (
           <div key={order.id} className="bg-white border-2 border-gray-200 rounded-lg overflow-hidden">
@@ -148,7 +205,7 @@ export default function OrderHistory() {
                   </div>
                   <div className="w-full sm:w-auto">
                     <p className="text-xs text-gray-600 mb-1">Total</p>
-                    <p className="font-bold text-blue-700">GH₵{order.total.toFixed(2)}</p>
+                    <p className="font-bold text-blue-700">GH₵{Number(order.total).toFixed(2)}</p>
                   </div>
                 </div>
                 <div className="w-full sm:w-auto">
@@ -164,16 +221,22 @@ export default function OrderHistory() {
                 {order.items.map((item) => (
                   <div key={item.id} className="flex space-x-4">
                     <div className="w-20 h-20 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0 border border-gray-200">
-                      <img
-                        src={item.image}
-                        alt={item.name}
-                        className="w-full h-full object-cover object-center"
-                      />
+                      {item.image ? (
+                        <img
+                          src={thumbSrc(item.image, 256)}
+                          alt={item.name}
+                          className="w-full h-full object-cover object-center"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-gray-300">
+                          <i className="ri-image-line text-2xl"></i>
+                        </div>
+                      )}
                     </div>
                     <div className="flex-1 min-w-0">
                       <h4 className="font-semibold text-gray-900 mb-1">{item.name}</h4>
                       <p className="text-sm text-gray-600">Quantity: {item.quantity}</p>
-                      <p className="text-sm font-bold text-gray-900 mt-1">GH₵{item.price.toFixed(2)}</p>
+                      <p className="text-sm font-bold text-gray-900 mt-1">GH₵{Number(item.price).toFixed(2)}</p>
                     </div>
                   </div>
                 ))}
@@ -189,17 +252,11 @@ export default function OrderHistory() {
                 </Link>
                 <button
                   onClick={() => handleReorder(order)}
-                  className="flex-1 sm:flex-none px-4 py-2 border-2 border-gray-300 text-gray-900 rounded-lg font-semibold hover:bg-gray-50 transition-colors whitespace-nowrap"
+                  disabled={reorderingId === order.id}
+                  className="flex-1 sm:flex-none px-4 py-2 border-2 border-gray-300 text-gray-900 rounded-lg font-semibold hover:bg-gray-50 transition-colors whitespace-nowrap disabled:opacity-60"
                 >
-                  <i className="ri-refresh-line mr-2"></i>
+                  <i className={`${reorderingId === order.id ? 'ri-loader-4-line animate-spin' : 'ri-refresh-line'} mr-2`}></i>
                   Reorder
-                </button>
-                <button
-                  onClick={() => handleDownloadInvoice(order.id)}
-                  className="flex-1 sm:flex-none px-4 py-2 border-2 border-gray-300 text-gray-900 rounded-lg font-semibold hover:bg-gray-50 transition-colors whitespace-nowrap"
-                >
-                  <i className="ri-download-line mr-2"></i>
-                  Invoice
                 </button>
                 <Link
                   href="/contact"

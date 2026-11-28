@@ -150,47 +150,15 @@ function isDeliverableEmail(email?: string): boolean {
 
 const TAYSEND_SMS_URL = (process.env.TAYSEND_API_URL || "https://api.taysend.com").replace(/\/+$/, "");
 const TAYSEND_FAILED_STATUSES = new Set(["failed", "rejected", "undelivered", "expired"]);
+const SMS_SENDER_ID = "MariesHair";
 
-async function sendViaTaysend(to: string, message: string, senderFallback?: string) {
-    const apiKey = process.env.TAYSEND_API_KEY?.trim();
-    const from = (process.env.TAYSEND_SENDER_ID || senderFallback || process.env.MOOLRE_SMS_SENDER_ID || "").trim();
-    if (!apiKey || !from) return null;
-    try {
-        const response = await fetch(`${TAYSEND_SMS_URL}/v1/messages`, {
-            method: "POST",
-            headers: {
-                Authorization: `Bearer ${apiKey}`,
-                "Content-Type": "application/json",
-                "Idempotency-Key": crypto.randomUUID(),
-            },
-            body: JSON.stringify({ to, sender_id: from, message, type: "transactional" }),
-            signal: AbortSignal.timeout(15000),
-        });
-        const result: any = await response.json().catch(() => null);
-        const status = String(result?.status || "").toLowerCase();
-        if (response.ok && result?.id && !TAYSEND_FAILED_STATUSES.has(status)) {
-            return { status: 1, code: "SMS01", provider: "taysend", messageid: result.id, data: [{ messageid: result.id }] };
-        }
-        console.warn("[SMS] Taysend failed, falling back:", result?.error?.message || result?.error || status || response.status);
-        return null;
-    } catch (error: any) {
-        console.warn("[SMS] Taysend failed, falling back:", error?.message || error);
-        return null;
-    }
-}
-
+/** Every text from the store goes through Taysend; its wallet pays for them. */
 export async function sendSMS({
  to, message }: { to: string; message: string }) {
-        const viaTaysend = await sendViaTaysend(formatPhoneNumber(to), message);
-    if (viaTaysend) return viaTaysend;
-
-    // Moolre SMS API only requires X-API-VASKEY header for authentication
-    // See: https://docs.moolre.com/#/send-sms
-    // Allow MOOLRE_SMS_API_KEY or fall back to MOOLRE_API_KEY
-    const smsVasKey = process.env.MOOLRE_SMS_API_KEY || process.env.MOOLRE_API_KEY;
-
-    if (!smsVasKey) {
-        console.warn('[SMS] Missing MOOLRE_SMS_API_KEY or MOOLRE_API_KEY');
+    const apiKey = process.env.TAYSEND_API_KEY?.trim();
+    const from = (process.env.TAYSEND_SENDER_ID || SMS_SENDER_ID).trim();
+    if (!apiKey) {
+        console.warn('[SMS] TAYSEND_API_KEY is not set, text not sent');
         return null;
     }
 
@@ -203,39 +171,27 @@ export async function sendSMS({
 
     try {
         console.log(`[SMS] Sending to ${maskPhone(recipient)}`);
-        const response = await fetch('https://api.moolre.com/open/sms/send', {
-            method: 'POST',
+        const response = await fetch(`${TAYSEND_SMS_URL}/v1/messages`, {
+            method: "POST",
             headers: {
-                'Content-Type': 'application/json',
-                'X-API-VASKEY': smsVasKey
+                Authorization: `Bearer ${apiKey}`,
+                "Content-Type": "application/json",
+                "Idempotency-Key": crypto.randomUUID(),
             },
-            body: JSON.stringify({
-                type: 1,
-                senderid: 'MariesHair',
-                messages: [
-                    {
-                        recipient: recipient,
-                        message: message
-                    }
-                ]
-            })
+            body: JSON.stringify({ to: recipient, sender_id: from, message, type: "transactional" }),
+            signal: AbortSignal.timeout(15000),
         });
-
-        const contentType = response.headers.get('content-type') || '';
-        if (!contentType.includes('application/json')) {
-            const text = await response.text();
-            console.error('[SMS] Non-JSON response:', text.slice(0, 200));
-            return { status: 0, error: text.slice(0, 200) };
+        const result: any = await response.json().catch(() => null);
+        const status = String(result?.status || "").toLowerCase();
+        if (response.ok && result?.id && !TAYSEND_FAILED_STATUSES.has(status)) {
+            console.log('[SMS] Result: Success | Status:', status || 'accepted');
+            return { status: 1, code: "SMS01", provider: "taysend", messageid: result.id, data: [{ messageid: result.id }] };
         }
-
-        const result = await response.json();
-        console.log('[SMS] Result:', result.status === 1 ? 'Success' : 'Failed', '| Code:', result.code);
-        if (result.status !== 1) {
-            console.log('[SMS] Full Response:', JSON.stringify(result, null, 2));
-        }
-        return result;
+        const reason = result?.error?.message || result?.error || status || response.status;
+        console.error('[SMS] Taysend failed:', reason);
+        return { status: 0, provider: "taysend", error: String(reason) };
     } catch (error: any) {
-        console.error('[SMS] Error:', error.message);
+        console.error('[SMS] Error:', error?.message || error);
         return null;
     }
 }

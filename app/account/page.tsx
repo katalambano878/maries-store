@@ -2,7 +2,6 @@
 
 import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import Link from 'next/link';
 import OrderHistory from './OrderHistory';
 import AddressBook from './AddressBook';
 import { supabase } from '@/lib/supabase';
@@ -51,11 +50,18 @@ function AccountContent() {
       }
 
       setUser(session.user);
+      const meta = session.user.user_metadata || {};
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('full_name, phone')
+        .eq('id', session.user.id)
+        .maybeSingle();
+      const [profileFirst = '', ...profileRest] = (profile?.full_name || '').trim().split(/\s+/);
       setProfileData({
-        firstName: session.user.user_metadata?.first_name || '',
-        lastName: session.user.user_metadata?.last_name || '',
+        firstName: meta.first_name || profileFirst,
+        lastName: meta.last_name || profileRest.join(' '),
         email: session.user.email || '',
-        phone: session.user.phone || ''
+        phone: meta.phone || profile?.phone || session.user.phone || ''
       });
       setLoading(false);
     }
@@ -77,6 +83,15 @@ function AccountContent() {
       });
 
       if (error) throw error;
+
+      // The admin's customer pages read the profile row, so keep it in step.
+      const fullName = `${profileData.firstName} ${profileData.lastName}`.trim();
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .update({ full_name: fullName || null, phone: profileData.phone.trim() || null })
+        .eq('id', user.id);
+      if (profileError) throw profileError;
+
       setProfileMessage({ type: 'success', text: 'Profile updated successfully!' });
     } catch (err: any) {
       setProfileMessage({ type: 'error', text: err.message });
@@ -127,35 +142,18 @@ function AccountContent() {
     );
   }
 
-  const quickActions = [
-    {
-      icon: 'ri-medal-line',
-      title: 'Loyalty Program',
-      description: 'Earn points and rewards',
-      link: '/loyalty'
-    },
-    {
-      icon: 'ri-user-add-line',
-      title: 'Refer & Earn',
-      description: 'Invite friends and earn rewards',
-      link: '/referral'
-    }
-  ];
-
   const securityOptions = [
     {
       icon: 'ri-mail-check-line',
       title: 'Verify Email',
       description: user?.email,
       status: user?.email_confirmed_at ? 'verified' : 'unverified',
-      link: '#' // /account/verify-email
     },
     {
       icon: 'ri-phone-line',
       title: 'Verify Phone',
-      description: user?.phone || 'No phone added',
+      description: profileData.phone || 'No phone added',
       status: user?.phone_confirmed_at ? 'verified' : 'unverified',
-      link: '#' // /account/verify-phone
     }
   ];
 
@@ -370,13 +368,12 @@ function AccountContent() {
                     <h2 className="text-2xl font-bold text-gray-900 mb-6">Security Settings</h2>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       {securityOptions.map((option, index) => (
-                        <Link
+                        <div
                           key={index}
-                          href={option.link}
-                          className="flex items-center justify-between p-5 border border-gray-200 rounded-2xl hover:border-blue-500 hover:shadow-md transition-all group bg-white"
+                          className="flex items-center justify-between p-5 border border-gray-200 rounded-2xl bg-white"
                         >
                           <div className="flex items-center gap-3 min-w-0">
-                            <div className="w-12 h-12 bg-gray-50 rounded-full flex items-center justify-center group-hover:bg-blue-100 group-hover:text-blue-700 transition-colors flex-shrink-0">
+                            <div className="w-12 h-12 bg-gray-50 rounded-full flex items-center justify-center flex-shrink-0">
                               <i className={`${option.icon} text-xl`}></i>
                             </div>
                             <div className="min-w-0">
@@ -391,13 +388,12 @@ function AccountContent() {
                               </span>
                             )}
                             {option.status === 'unverified' && (
-                              <span className="text-[10px] sm:text-xs font-bold px-2 sm:px-3 py-1 bg-amber-100 text-amber-700 rounded-full flex items-center gap-1">
-                                <i className="ri-error-warning-fill"></i> <span className="hidden sm:inline">Verify</span>
+                              <span className="text-[10px] sm:text-xs font-bold px-2 sm:px-3 py-1 bg-gray-100 text-gray-600 rounded-full flex items-center gap-1">
+                                <span className="hidden sm:inline">Not verified</span>
                               </span>
                             )}
-                            <i className="ri-arrow-right-line text-gray-300 group-hover:text-blue-500 transition-colors"></i>
                           </div>
-                        </Link>
+                        </div>
                       ))}
                     </div>
                   </div>

@@ -1,13 +1,16 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { Suspense, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { useRecaptcha } from '@/hooks/useRecaptcha';
+import { safeRedirect } from '@/lib/safe-redirect';
 
-export default function LoginPage() {
+function LoginContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const redirectTo = safeRedirect(searchParams.get('redirect'));
   const [formData, setFormData] = useState({
     email: '',
     password: '',
@@ -61,7 +64,7 @@ export default function LoginPage() {
       }
 
       if (data.session) {
-        router.push('/account');
+        router.push(redirectTo);
         router.refresh(); // Refresh to update auth state in other components
       }
     } catch (error: any) {
@@ -189,7 +192,7 @@ export default function LoginPage() {
 
           <p className="mt-8 text-center text-gray-600">
             Don't have an account?{' '}
-            <Link href="/auth/signup" className="text-blue-700 hover:text-blue-900 font-semibold whitespace-nowrap">
+            <Link href={redirectTo === '/account' ? '/auth/signup' : `/auth/signup?redirect=${encodeURIComponent(redirectTo)}`} className="text-blue-700 hover:text-blue-900 font-semibold whitespace-nowrap">
               Create one now
             </Link>
           </p>
@@ -203,5 +206,13 @@ export default function LoginPage() {
         </div>
       </div>
     </main>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginContent />
+    </Suspense>
   );
 }

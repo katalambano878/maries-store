@@ -1,11 +1,12 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { Suspense, useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import PasswordStrengthMeter from '@/components/PasswordStrengthMeter';
 import { supabase } from '@/lib/supabase';
 import { useRecaptcha } from '@/hooks/useRecaptcha';
+import { safeRedirect } from '@/lib/safe-redirect';
 
 function getFriendlyError(message: string): string {
   const lower = message.toLowerCase();
@@ -27,7 +28,9 @@ function getFriendlyError(message: string): string {
   return message;
 }
 
-export default function SignupPage() {
+function SignupContent() {
+  const searchParams = useSearchParams();
+  const redirectTo = safeRedirect(searchParams.get('redirect'));
   const router = useRouter();
   const errorRef = useRef<HTMLDivElement>(null);
   const [formData, setFormData] = useState({
@@ -115,6 +118,17 @@ export default function SignupPage() {
       if (error) throw error;
 
       if (data.user) {
+        // The admin's customer list reads name and phone from the profile row.
+        if (data.session) {
+          await supabase
+            .from('profiles')
+            .update({
+              full_name: `${formData.firstName} ${formData.lastName}`.trim(),
+              phone: formData.phone.trim() || null,
+            })
+            .eq('id', data.user.id);
+        }
+
         // Send Welcome Notification
         fetch('/api/notifications', {
           method: 'POST',
@@ -135,7 +149,7 @@ export default function SignupPage() {
           setSuccess(true);
         } else {
           // Auto-login success (if email confirming is off)
-          router.push('/account');
+          router.push(redirectTo);
           router.refresh();
         }
       }
@@ -373,7 +387,7 @@ export default function SignupPage() {
 
           <p className="mt-8 text-center text-gray-600">
             Already have an account?{' '}
-            <Link href="/auth/login" className="text-blue-700 hover:text-blue-900 font-semibold whitespace-nowrap">
+            <Link href={redirectTo === '/account' ? '/auth/login' : `/auth/login?redirect=${encodeURIComponent(redirectTo)}`} className="text-blue-700 hover:text-blue-900 font-semibold whitespace-nowrap">
               Sign in
             </Link>
           </p>
@@ -387,5 +401,13 @@ export default function SignupPage() {
         </div>
       </div>
     </main>
+  );
+}
+
+export default function SignupPage() {
+  return (
+    <Suspense fallback={null}>
+      <SignupContent />
+    </Suspense>
   );
 }

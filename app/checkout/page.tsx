@@ -7,6 +7,7 @@ import CheckoutSteps from '@/components/CheckoutSteps';
 import OrderSummary from '@/components/OrderSummary';
 import { useCart } from '@/context/CartContext';
 import { supabase } from '@/lib/supabase';
+import { GHANA_REGIONS } from '@/lib/ghana-regions';
 import { usePageTitle } from '@/hooks/usePageTitle';
 import { useRecaptcha } from '@/hooks/useRecaptcha';
 import {
@@ -23,7 +24,6 @@ export default function CheckoutPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [checkoutType, setCheckoutType] = useState<'guest' | 'account'>('guest');
   const [saveAddress, setSaveAddress] = useState(false);
-  const [savePayment, setSavePayment] = useState(false);
   const [user, setUser] = useState<any>(null);
   const { getToken, verifying } = useRecaptcha();
 
@@ -38,25 +38,7 @@ export default function CheckoutPage() {
   });
 
   // Ghana Regions for dropdown
-  const ghanaRegions = [
-    'Greater Accra',
-    'Ashanti',
-    'Western',
-    'Central',
-    'Eastern',
-    'Northern',
-    'Volta',
-    'Upper East',
-    'Upper West',
-    'Brong-Ahafo',
-    'Ahafo',
-    'Bono',
-    'Bono East',
-    'North East',
-    'Savannah',
-    'Oti',
-    'Western North'
-  ];
+  const ghanaRegions = GHANA_REGIONS;
 
   const [deliveryMethod, setDeliveryMethod] = useState('pickup');
   const [errors, setErrors] = useState<any>({});
@@ -70,20 +52,34 @@ export default function CheckoutPage() {
       if (session?.user) {
         setUser(session.user);
         setCheckoutType('account'); // Auto-select account checkout if logged in
-        // Pre-fill email if available
-        setShippingData(prev => ({ ...prev, email: session.user.email || '' }));
+        // Pre-fill from the default saved address, then the account details.
+        const meta = session.user.user_metadata || {};
+        const [{ data: saved }, { data: profile }] = await Promise.all([
+          supabase
+            .from('addresses')
+            .select('full_name, phone, address_line1, city, state')
+            .eq('user_id', session.user.id)
+            .order('is_default', { ascending: false })
+            .order('created_at', { ascending: false })
+            .limit(1),
+          supabase.from('profiles').select('full_name, phone').eq('id', session.user.id).maybeSingle(),
+        ]);
+        const address = saved?.[0];
+        const [nameFirst = '', ...nameRest] = (address?.full_name || profile?.full_name || '').trim().split(/\s+/);
+        setShippingData(prev => ({
+          ...prev,
+          email: prev.email || session.user.email || '',
+          firstName: prev.firstName || meta.first_name || nameFirst,
+          lastName: prev.lastName || meta.last_name || nameRest.join(' '),
+          phone: prev.phone || address?.phone || meta.phone || profile?.phone || '',
+          address: prev.address || address?.address_line1 || '',
+          city: prev.city || address?.city || '',
+          region: prev.region || address?.state || '',
+        }));
       }
     }
     checkUser();
-
-    // Small delay to ensure cart load
-    const timer = setTimeout(() => {
-      if (cart.length === 0 && !isLoading) {
-        // router.push('/cart'); // Optional: redirect if empty
-      }
-    }, 500);
-    return () => clearTimeout(timer);
-  }, [cart, router, isLoading]);
+  }, []);
 
   // Scroll to top when step changes
   useEffect(() => {
@@ -319,6 +315,39 @@ export default function CheckoutPage() {
 
       if (itemsError) throw itemsError;
 
+      // Save the address to the account when asked (best effort; never blocks the order).
+      if (user && saveAddress) {
+        const fullName = `${shippingData.firstName} ${shippingData.lastName}`.trim();
+        const { data: existing } = await supabase
+          .from('addresses')
+          .select('id')
+          .eq('user_id', user.id)
+          .eq('address_line1', shippingData.address)
+          .eq('city', shippingData.city)
+          .limit(1);
+        if (!existing?.length) {
+          const { count } = await supabase
+            .from('addresses')
+            .select('id', { count: 'exact', head: true })
+            .eq('user_id', user.id);
+          await supabase.from('addresses').insert({
+            id: crypto.randomUUID(),
+            user_id: user.id,
+            type: 'shipping',
+            full_name: fullName,
+            phone: shippingData.phone,
+            address_line1: shippingData.address,
+            city: shippingData.city,
+            state: shippingData.region,
+            postal_code: '',
+            country: 'Ghana',
+            is_default: !count,
+          }).then(({ error }) => {
+            if (error) console.warn('Could not save address:', error.message);
+          });
+        }
+      }
+
       // Note: Stock reduction happens in mark_order_paid when payment is confirmed
 
       // 3. Upsert Customer Record (for both guest and registered users)
@@ -436,7 +465,7 @@ export default function CheckoutPage() {
               </button>
 
               <button
-                onClick={() => setCheckoutType('account')}
+                onClick={() => (user ? setCheckoutType('account') : router.push('/auth/signup?redirect=/checkout'))}
                 className={`p-6 rounded-xl border-2 transition-all text-left cursor-pointer ${checkoutType === 'account'
                   ? 'border-stone-700 bg-stone-50'
                   : 'border-gray-200 hover:border-gray-300'
@@ -579,7 +608,7 @@ export default function CheckoutPage() {
                       </div>
                     </div>
 
-                    {checkoutType === 'account' && (
+                    {user && (
                       <label className="flex items-center space-x-3 cursor-pointer">
                         <input
                           type="checkbox"
